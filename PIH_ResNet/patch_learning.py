@@ -6,18 +6,15 @@ import sys
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataset import UFData
+from dataset import PIHData
 from model import Model
 from tqdm import tqdm
 from resnet import resnet18,resnet18_m
 from network import SimpleNet
 
-## Just for plotting
-import matplotlib
 
-matplotlib.use("TkAgg")
-import sigpy.plot as pl
-
+import torchvision.transforms as T
+import torchvision.transforms.functional as F
 # TODO: Tensorboard
 # TODO: Learning rate decay
 # TODO: Tune temperature (~0.07?)
@@ -27,7 +24,7 @@ import sigpy.plot as pl
 
 def get_args():
     parser = OptionParser()
-    parser.add_option("--datadir", "--dd", help="Directory contains 2D patches.")
+    parser.add_option("--datadir", "--dd", help="Directory contains 2D images.")
     parser.add_option(
         "-g",
         "--gpu_id",
@@ -41,7 +38,7 @@ def get_args():
     parser.add_option(
         "-f",
         "--features",
-        default=128,
+        default=2,
         type="int",
         help="Dimension of the feature space.",
     )
@@ -53,47 +50,16 @@ def get_args():
         help="learning rate for the model",
     )
     parser.add_option(
-        "--temperature",
-        "--temp",
-        default=1.00,
-        type=float,
-        help="temperature parameter default: 1",
-    )
-    parser.add_option(
         "--batchsize",
         "--bs",
         dest="batchsize",
-        default=32,
+        default=1,
         type="int",
         help="batch size for training",
     )
     parser.add_option(
-        "-e", "--epochs", default=200, type="int", help="Number of epochs to train"
+        "-e", "--epochs", default=20000, type="int", help="Number of epochs to train"
     )
-    # parser.add_option('-m', '--model', dest='model',
-    #                   default=False, help='load checkpoints')
-    parser.add_option(
-        "--use_magnitude",
-        action="store_true",
-        default=False,
-        help="If specified, use image magnitude.",
-    )
-    parser.add_option(
-        "--use_phase_augmentation",
-        action="store_true",
-        default=False,
-        help="If specified, use phase augmentation.",
-    )
-    parser.add_option(
-        "--use_mag_augmentation",
-        action="store_true",
-        default=False,
-        help="If specified, use mag augmentation. (randomly scale it by a factor between 0.9 and 1.1)",
-    )
-    # parser.add_option('-x', '--sx', dest='sx',
-    #                   default=256, type='int', help='image dim: x')
-    # parser.add_option('-y', '--sy', dest='sy',
-    #                   default=320, type='int', help='image dim: y')
     parser.add_option(
         "--force_train_from_scratch",
         "--overwrite",
@@ -111,47 +77,31 @@ class Trainer:
         self.args = get_args()
         self.device = torch.device(f"cuda:{self.args.gpu_id}")
         print("Using device:", self.device)
-        print("Using magnitude:", self.args.use_magnitude)
 
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
-        self.dataset = UFData(
+        self.dataset = PIHData(
             self.args.datadir,
-            magnitude=bool(self.args.use_magnitude),
-            device=self.device,
-            phase_aug=self.args.use_phase_augmentation,
-            mag_aug=self.args.use_mag_augmentation,
+            device=self.device
         )
         self.dataloader = DataLoader(
             self.dataset,
             self.args.batchsize,
             shuffle=True,
-            drop_last=True,
-            num_workers=24,
-            prefetch_factor=4,
+            num_workers=1,
+            # prefetch_factor=2,
         )
 
         self.data_length = len(self.dataset)
-        if bool(self.args.use_magnitude):
-            self.model = Model(
-                resnet18_m,
-                temperature=self.args.temperature,
-                feature_dim=self.args.features,
-                device=self.device,
-                data_length=self.data_length,
-            )
-        else:
-            self.model = Model(
-                resnet18,
-                temperature=self.args.temperature,
-                feature_dim=self.args.features,
-                device=self.device,
-                data_length=self.data_length,
-            )
-        self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.args.learning_rate
+        self.model = Model(
+            resnet18,
+            feature_dim=self.args.features,
+            device=self.device
+        )
+        self.criterion = torch.nn.MSELoss().to(self.device)
+        self.optimizer = torch.optim.SGD(
+            self.model.parameters(), lr=self.args.learning_rate,momentum=0.9
         )
 
         self.start_epoch = 1
@@ -204,45 +154,76 @@ class Trainer:
         """Train the model!"""
 
         losses = []
-
-        # Initiate the memory bank
-        self.model.eval()
-        for index, (indices, images) in enumerate(tqdm(self.dataloader, "Step")):
-
-            images = images.to(self.device)
-            embeddings = self.model(images)
-            with torch.no_grad():
-                self.model.update_memory_bank(embeddings, indices)
+        par = torch.tensor([0.0,1.0])
+        par.requires_grad = True
+        self.optimizer2 = torch.optim.SGD(
+            [par], lr=self.args.learning_rate,momentum=0.9
+        )
 
         #         sys.exit()
         for epoch in tqdm(range(self.start_epoch, self.args.epochs + 1), "Epoch"):
 
             self.model.train()
-            for index, (indices, images) in enumerate(tqdm(self.dataloader, "Step")):
+            for index, (input_image, input_mask, gt) in enumerate(tqdm(self.dataloader, "Step")):
 
-                images = images.to(self.device)
-                embeddings = self.model(images)
+
+                
+                input_image = input_image.to(self.device)
+                input_mask = input_mask.to(self.device)
+                gt = gt.to(self.device)
+                
+                input_all = torch.cat((input_image,input_mask),1)
+                
+                embeddings = self.model(input_all)[0,...]
                 #
-                logits = self.model.get_logits_labels(embeddings)
 
-                loss = self.criterion(logits, indices.to(self.device))
+                brightness = abs(embeddings[0])
+                saturation = abs(embeddings[1])
+                # brightness = par[0]
+                # saturation = par[1]
+                # contrast = embeddings[2]
+                # hue = embeddings[3]
+                
+                # input_out = torch.clip(input_image*brightness,min=0,max=1)
+                
+                input_out = input_image.clone()
+                r, g, b = input_out.unbind(dim=-3)
+  
+                l_img = (0.2989 * r + 0.587 * g + 0.114 * b).to(input_out.dtype)
+                l_img = l_img.unsqueeze(dim=-3)
+                
+                mean = torch.mean(l_img, dim=(-3, -2, -1), keepdim=True)
+                
+                input_out = (saturation * input_out + (1.0 - saturation) * mean).clamp(0, 1)
+                input_out = torch.clip(input_out*brightness,min=0,max=1)
+                
+                # input_out = T.functional.adjust_brightness(input_image,brightness)
+                # input_out = T.functional.adjust_saturation(input_out,saturation)
+                
+                input_composite = input_out * input_mask + (1-input_mask)*input_image
+                
+                loss = self.criterion(input_composite, gt)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-                with torch.no_grad():
-                    self.model.update_memory_bank(embeddings, indices)
+                print(loss.item())
+                losses.append(loss.item())
+                
+                
+                if epoch % 100 == 0:
+                    # self.save_model(epoch)
+                    image_all = T.ToPILImage()(input_composite[0,...].cpu())
+                    image_all.save("/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp%d.jpg"%(index))
 
-                if index % 400 == 0:
-                    print(loss.item())
-                    losses.append(loss.item())
-
-            print(f"\n\n\tEpoch {epoch}. Loss {loss.item()}\n")
+            print(f"\n\n\tEpoch {epoch}. Loss {loss.item()}\n brightness {brightness} saturation {saturation}")
             np.save(os.path.join(self.args.logdir, "loss_all.npy"), np.array(losses))
 
-            if epoch % 10 == 0:
+            if epoch % 100 == 0:
                 self.save_model(epoch)
+                image_all = T.ToPILImage()(input_composite[0,...].cpu())
+                image_all.save("/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp1.jpg")
 
 
 if __name__ == "__main__":

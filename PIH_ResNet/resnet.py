@@ -183,7 +183,7 @@ class ResNet(nn.Module):
         x = self.avgpool(x1)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        x = f.normalize(x, p=2, dim=1)
+        # x = f.normalize(x, p=2, dim=1)
         return x,x1
 
 
@@ -192,7 +192,7 @@ def resnet18(pretrained=False, num_classes=1000,**kwargs):
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(BasicBlock, [2, 2, 2, 2],num_classes=num_classes, **kwargs)
+    model = ResNet(BasicBlock, [2, 2, 2, 2],input_f = 4,num_classes=num_classes, **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet18']))
     return model
