@@ -9,17 +9,11 @@ from torch.utils.data import DataLoader
 from dataset import PIHData
 from model import Model
 from tqdm import tqdm
-from resnet import resnet18,resnet18_m
-from network import SimpleNet
 from torch import Tensor
 
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
-# TODO: Tensorboard
-# TODO: Learning rate decay
-# TODO: Tune temperature (~0.07?)
-# TODO: Maybe sample from memory bank too?
-# Done: Sample from encodings?
+
 
 def get_args():
     parser = OptionParser()
@@ -28,7 +22,7 @@ def get_args():
         "-g",
         "--gpu_id",
         dest="gpu_id",
-        type="int",
+        type="int", 
         help="GPU number, default is None (-g 0 means use gpu 0)",
     )
     parser.add_option(
@@ -44,7 +38,7 @@ def get_args():
     parser.add_option(
         "--learning-rate",
         "--lr",
-        default=1e-4,
+        default=2e-6,
         type="float",
         help="learning rate for the model",
     )
@@ -94,13 +88,12 @@ class Trainer:
 
         self.data_length = len(self.dataset)
         self.model = Model(
-            resnet18,
             feature_dim=self.args.features,
             device=self.device
         )
         self.criterion = torch.nn.L1Loss().to(self.device)
         self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.args.learning_rate,
+            self.model.parameters(), lr=self.args.learning_rate
         )
 
         self.start_epoch = 1
@@ -132,117 +125,6 @@ class Trainer:
             print("No saved model found. Training from scratch.")
 
 
-    def _blend(self,img1, img2, ratio):
-        # ratio = float(ratio)
-        bound = 1.0
-    
-        return (ratio * img1 + (1.0 - ratio) * img2).clamp(0, bound)
-    
-    
-    def rgb_to_grayscale(self,img):
-        r, g, b = img.unbind(dim=-3)
-    # This implementation closely follows the TF one:
-        # https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/ops/image_ops_impl.py#L2105-L2138
-        l_img = (0.2989 * r + 0.587 * g + 0.114 * b).to(img.dtype)
-        l_img = l_img.unsqueeze(dim=-3)
-    
-        return l_img
-    
-    
-    def adjust_brightness(self, img, brightness_factor):
-
-
-        return self._blend(img, torch.zeros_like(img), brightness_factor)
-    
-    
-    
-    def adjust_contrast(self,img, contrast_factor):
-
-        mean = torch.mean(self.rgb_to_grayscale(img), dim=(-3, -2, -1), keepdim=True)
-
-
-        return self._blend(img, mean, contrast_factor)
-    
-    def adjust_saturation(self,img, saturation_factor):
-        
-                        # l_img = self.rgb_to_grayscale(input_out)
-                # input_out = (saturation * input_out + (1.0 - saturation) * l_img).clamp(0, 1)
-        
-        
-        return self._blend(img, self.rgb_to_grayscale(img), saturation_factor)
-    
-    
-    
-    def _rgb2hsv(self,img):
-        r, g, b = img.unbind(dim=-3)
-
-        # Implementation is based on https://github.com/python-pillow/Pillow/blob/4174d4267616897df3746d315d5a2d0f82c656ee/
-        # src/libImaging/Convert.c#L330
-        maxc = torch.max(img, dim=-3).values
-        minc = torch.min(img, dim=-3).values
-
-        # The algorithm erases S and H channel where `maxc = minc`. This avoids NaN
-        # from happening in the results, because
-        #   + S channel has division by `maxc`, which is zero only if `maxc = minc`
-        #   + H channel has division by `(maxc - minc)`.
-        #
-        # Instead of overwriting NaN afterwards, we just prevent it from occuring so
-        # we don't need to deal with it in case we save the NaN in a buffer in
-        # backprop, if it is ever supported, but it doesn't hurt to do so.
-        eqc = maxc == minc
-
-        cr = maxc - minc
-        # Since `eqc => cr = 0`, replacing denominator with 1 when `eqc` is fine.
-        ones = torch.ones_like(maxc)
-        s = cr / torch.where(eqc, ones, maxc)
-        # Note that `eqc => maxc = minc = r = g = b`. So the following calculation
-        # of `h` would reduce to `bc - gc + 2 + rc - bc + 4 + rc - bc = 6` so it
-        # would not matter what values `rc`, `gc`, and `bc` have here, and thus
-        # replacing denominator with 1 when `eqc` is fine.
-        cr_divisor = torch.where(eqc, ones, cr)
-        rc = (maxc - r) / cr_divisor
-        gc = (maxc - g) / cr_divisor
-        bc = (maxc - b) / cr_divisor
-
-        hr = (maxc == r) * (bc - gc)
-        hg = ((maxc == g) & (maxc != r)) * (2.0 + rc - bc)
-        hb = ((maxc != g) & (maxc != r)) * (4.0 + gc - rc)
-        h = hr + hg + hb
-        h = torch.fmod((h / 6.0 + 1.0), 1.0)
-        return torch.stack((h, s, maxc), dim=-3)
-
-
-    def _hsv2rgb(self,img):
-        h, s, v = img.unbind(dim=-3)
-        i = torch.floor(h * 6.0)
-        f = (h * 6.0) - i
-        i = i.to(dtype=torch.int32)
-
-        p = torch.clamp((v * (1.0 - s)), 0.0, 1.0)
-        q = torch.clamp((v * (1.0 - s * f)), 0.0, 1.0)
-        t = torch.clamp((v * (1.0 - s * (1.0 - f))), 0.0, 1.0)
-        i = i % 6
-
-        mask = i.unsqueeze(dim=-3) == torch.arange(6, device=i.device).view(-1, 1, 1)
-
-        a1 = torch.stack((v, q, p, p, t, v), dim=-3)
-        a2 = torch.stack((t, v, v, q, p, p), dim=-3)
-        a3 = torch.stack((p, p, t, v, v, q), dim=-3)
-        a4 = torch.stack((a1, a2, a3), dim=-4)
-
-        return torch.einsum("...ijk, ...xijk -> ...xjk", mask.to(dtype=img.dtype), a4)
-
-    
-    
-    def adjust_hue(self,img, hue_factor):
-
-        img = self._rgb2hsv(img)
-        h, s, v = img.unbind(dim=-3)
-        h = (h + hue_factor) % 1.0
-        img = torch.stack((h, s, v), dim=-3)
-        img_hue_adj =self._hsv2rgb(img)
-
-        return img_hue_adj
     
     
     
@@ -270,9 +152,6 @@ class Trainer:
         losses = []
         par = torch.tensor([0.0,1.0])
         par.requires_grad = True
-        self.optimizer2 = torch.optim.SGD(
-            [par], lr=self.args.learning_rate,momentum=0.9
-        )
 
         tqdm_bar = tqdm(range(self.start_epoch, self.args.epochs + 1), "Epoch")
         #         sys.exit()
@@ -292,33 +171,65 @@ class Trainer:
                 embeddings = self.model(input_all)[0,...]
                 #
 
-                brightness = abs(embeddings[0])
-                contrast = abs(embeddings[1])
-                saturation = abs(embeddings[2])
-                hue = 0
+                brightness = embeddings[0]
+                contrast = embeddings[1]
+                saturation = embeddings[2]
                 
-                # brightness = par[0]
-                # saturation = par[1]
-                # contrast = embeddings[2]
-                # hue = embeddings[3]
                 
                 input_out = input_image.clone()
                 
                 
-
-                
-                input_out = self.adjust_brightness(input_out, brightness)
                     
+                input_out = self.adjust_brightness(input_out, brightness)
                 
                 input_out = self.adjust_contrast(input_out, contrast)
                 
                 
                 input_out = self.adjust_saturation(input_out, saturation)
                 
+                
+                
+                input_composite = input_out * input_mask + (1-input_mask)*input_image
+                
+                
+                ## Start tuning the color
 
+                inputs_color = torch.cat((input_image,input_composite,input_mask),1)
                 
                 
+                output_color = self.model.forward_color(inputs_color)
                 
+                
+                a_r = 0
+                b_r = output_color[0,1]
+                c_r = output_color[0,2]
+                d_r = output_color[0,3]
+                
+                
+                a_g = 0
+                b_g = output_color[0,5]
+                c_g = output_color[0,6]
+                d_g = output_color[0,7]
+                
+                
+                a_b = 0 
+                b_b = output_color[0,9]
+                c_b = output_color[0,10]   
+                d_b = output_color[0,11]               
+                
+                
+                # color_out = (input_composite * a + input_composite*input_composite *b).clamp(0,1)
+                color_out_r = (input_composite[:,0,...]*input_composite[:,0,...]*input_composite[:,0,...] * d_r + input_composite[:,0,...]*input_composite[:,0,...] * c_r + input_composite[:,0,...] * b_r + torch.ones_like(input_composite[:,0,...]) *a_r).clamp(0,1)
+                color_out_g = (input_composite[:,1,...]*input_composite[:,1,...]*input_composite[:,1,...] * d_g + input_composite[:,1,...]*input_composite[:,1,...] * c_g + input_composite[:,1,...] * b_g + torch.ones_like(input_composite[:,1,...]) *a_g).clamp(0,1)
+                color_out_b = (input_composite[:,2,...]*input_composite[:,2,...]*input_composite[:,2,...] * d_b + input_composite[:,2,...]*input_composite[:,2,...] * c_b + input_composite[:,2,...] * b_b + torch.ones_like(input_composite[:,2,...]) *a_b).clamp(0,1)
+                
+                color_out = torch.cat((color_out_r.unsqueeze(1),color_out_g.unsqueeze(1),color_out_b.unsqueeze(1)),1)
+                
+                
+                output_composite = color_out * input_mask + (1-input_mask)*input_image
+                
+                
+                # color_out = input_composite.clone()
                 # input_out = self.adjust_hue(input_out,hue)
                 
                 
@@ -334,11 +245,10 @@ class Trainer:
                 
                 
                 
-                input_composite = input_out * input_mask + (1-input_mask)*input_image
                 
             
                 
-                loss = self.criterion(input_composite, gt)
+                loss = 2*self.criterion(output_composite, gt) + 0*self.criterion(input_composite, gt)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -350,16 +260,20 @@ class Trainer:
                 
                 if epoch % 100 == 0:
                     # self.save_model(epoch)
-                    image_all = T.ToPILImage()(input_composite[0,...].cpu())
+                    image_all = T.ToPILImage()(output_composite[0,...].cpu())
                     image_all.save("/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp%d.jpg"%(index))
+                    
+                    image_i = T.ToPILImage()(input_composite[0,...].cpu())
+                    image_i.save("/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp%d_inter.jpg"%(index))
 
-            tqdm_bar.set_description("E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f}".format(epoch,loss.item(),brightness,contrast,saturation))
+
+            tqdm_bar.set_description("E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f} br: {:3f} bg: {:3f} bb: {:3f}".format(epoch,loss.item(),brightness,contrast,saturation,b_r,b_g,b_b))
             # print(f"\n\n\tEpoch {epoch}. Loss {loss.item()}\n brightness {brightness} contrast {contrast} saturation {saturation} hue {hue}")
             np.save(os.path.join(self.args.logdir, "loss_all.npy"), np.array(losses))
 
             if epoch % 100 == 0:
                 self.save_model(epoch)
-                image_all = T.ToPILImage()(input_composite[0,...].cpu())
+                image_all = T.ToPILImage()(output_composite[0,...].cpu())
                 image_all.save("/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp1.jpg")
 
 

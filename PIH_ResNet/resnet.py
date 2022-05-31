@@ -131,7 +131,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2, norm_layer=norm_layer)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-
+        self.sigmoid = nn.Sigmoid()
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -183,16 +183,17 @@ class ResNet(nn.Module):
         x = self.avgpool(x1)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
+        x = abs(x)
         # x = f.normalize(x, p=2, dim=1)
         return x,x1
 
 
-def resnet18(pretrained=False, num_classes=1000,**kwargs):
+def resnet18(pretrained=False, input_f = 4, num_classes=1000,**kwargs):
     """Constructs a ResNet-18 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(BasicBlock, [2, 2, 2, 2],input_f = 4,num_classes=num_classes, **kwargs)
+    model = ResNet(BasicBlock, [2, 2, 2, 2],input_f = input_f,num_classes=num_classes, **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet18']))
     return model
