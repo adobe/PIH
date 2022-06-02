@@ -38,7 +38,7 @@ def get_args():
     parser.add_option(
         "--learning-rate",
         "--lr",
-        default=1e-5,
+        default=4e-6,
         type="float",
         help="learning rate for the model",
     )
@@ -153,9 +153,10 @@ class Trainer:
 
                 input_composite, output_composite = self.model()
 
-                loss = 2 * self.criterion(
-                    output_composite, self.model.gt
-                ) + 0 * self.criterion(input_composite, self.model.gt)
+                loss_second = self.criterion(output_composite, self.model.gt)
+
+                loss_first = self.criterion(input_composite, self.model.gt)
+                loss = 1 * loss_second + 0 * loss_first
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -164,24 +165,30 @@ class Trainer:
                 # print(loss.item())
                 losses.append(loss.item())
 
-                if epoch % 100 == 0:
+                if epoch % 10 == 0:
                     # self.save_model(epoch)
                     image_all = T.ToPILImage()(output_composite[0, ...].cpu())
                     image_all.save(
-                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp%d.jpg"
+                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d.jpg"
                         % (index)
                     )
 
                     image_i = T.ToPILImage()(input_composite[0, ...].cpu())
                     image_i.save(
-                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp%d_inter.jpg"
+                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_inter.jpg"
+                        % (index)
+                    )
+
+                    image_gt = T.ToPILImage()(self.model.gt[0, ...].cpu())
+                    image_gt.save(
+                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_gt.jpg"
                         % (index)
                     )
 
             tqdm_bar.set_description(
                 "E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f} br: {:3f} bg: {:3f} bb: {:3f}".format(
                     epoch,
-                    loss.item(),
+                    loss_second.item(),
                     self.model.brightness,
                     self.model.contrast,
                     self.model.saturation,
