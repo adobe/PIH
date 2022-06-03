@@ -195,7 +195,7 @@ class Trainer:
                 loss_second = self.criterion(output_composite, gt)
 
                 loss_first = self.criterion(input_composite, gt)
-                loss = 1 * loss_second + 0 * loss_first
+                loss = 2 * loss_second + 1 * loss_first
 
                 self.optimizer.zero_grad()
                 loss.backward()
