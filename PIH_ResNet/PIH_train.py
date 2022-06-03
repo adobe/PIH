@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataset import PIHData
+from dataset import PIHData, PIHDataRandom
 from model import Model
 from tqdm import tqdm
 from torch import Tensor
@@ -38,7 +38,7 @@ def get_args():
     parser.add_option(
         "--learning-rate",
         "--lr",
-        default=4e-6,
+        default=1e-5,
         type="float",
         help="learning rate for the model",
     )
@@ -46,7 +46,7 @@ def get_args():
         "--batchsize",
         "--bs",
         dest="batchsize",
-        default=1,
+        default=4,
         type="int",
         help="batch size for training",
     )
@@ -60,6 +60,19 @@ def get_args():
         help="If specified, training will start from scratch."
         " Otherwise, latest checkpoint (if any) will be used",
     )
+
+    parser.add_option(
+        "--multi_GPU",
+        "--distribuited",
+        action="store_true",
+        help="If specified, training will use multiple GPU.",
+    )
+
+    parser.add_option(
+        "--random_aug",
+        action="store_true",
+        help="If specified, training will modify the color on the fly.",
+    )
     (options, args) = parser.parse_args()
     return options
 
@@ -68,22 +81,39 @@ class Trainer:
     def __init__(self):
 
         self.args = get_args()
-        self.device = torch.device(f"cuda:{self.args.gpu_id}")
+        # self.device = torch.device(f"cuda:{self.args.gpu_id}")
+        self.device = torch.device(f"cuda")
+
         print("Using device:", self.device)
 
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
-        self.dataset = PIHData(self.args.datadir, device=self.device)
+        if self.args.random_aug:
+            print("haha")
+            self.dataset = PIHDataRandom(self.args.datadir, device=self.device)
+        else:
+            self.dataset = PIHData(self.args.datadir, device=self.device)
+
         self.dataloader = DataLoader(
             self.dataset,
             self.args.batchsize,
             shuffle=True,
-            num_workers=1,
+            num_workers=8,
+            prefetch_factor=4,
+            drop_last=True,
         )
 
         self.data_length = len(self.dataset)
-        self.model = Model(feature_dim=self.args.features, device=self.device)
+        self.model = Model(feature_dim=self.args.features)
+
+        if torch.cuda.device_count() > 1 and self.args.multi_GPU:
+            print("Let's use", torch.cuda.device_count(), "GPUs!")
+            # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+            self.model = torch.nn.DataParallel(self.model)
+
+        self.model.to(self.device)
+        # self.model(command="per_gpu_initialize")
         self.criterion = torch.nn.L1Loss()
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.args.learning_rate
@@ -144,18 +174,27 @@ class Trainer:
 
         tqdm_bar = tqdm(range(self.start_epoch, self.args.epochs + 1), "Epoch")
         #         sys.exit()
-        for epoch in tqdm_bar:
+        for epoch in range(self.start_epoch, self.args.epochs + 1):
 
             self.model.train()
-            for index, (input_image, input_mask, gt) in enumerate(self.dataloader):
+            tqdm_bar = tqdm(enumerate(self.dataloader), "Index")
 
-                self.model.initiate(input_image, input_mask, gt)
+            for index, (input_image, input_mask, gt) in tqdm_bar:
 
-                input_composite, output_composite = self.model()
+                input_image = input_image.to(self.device)
+                input_mask = input_mask.to(self.device)
+                gt = gt.to(self.device)
 
-                loss_second = self.criterion(output_composite, self.model.gt)
+                input_composite, output_composite, par1, par2 = self.model(
+                    input_image, input_mask
+                )
 
-                loss_first = self.criterion(input_composite, self.model.gt)
+                brightness, contrast, saturation = par1
+                b_r, b_g, b_b = par2
+
+                loss_second = self.criterion(output_composite, gt)
+
+                loss_first = self.criterion(input_composite, gt)
                 loss = 1 * loss_second + 0 * loss_first
 
                 self.optimizer.zero_grad()
@@ -167,45 +206,58 @@ class Trainer:
 
                 if epoch % 10 == 0:
                     # self.save_model(epoch)
-                    image_all = T.ToPILImage()(output_composite[0, ...].cpu())
-                    image_all.save(
-                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d.jpg"
-                        % (index)
-                    )
 
-                    image_i = T.ToPILImage()(input_composite[0, ...].cpu())
-                    image_i.save(
-                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_inter.jpg"
-                        % (index)
-                    )
+                    for kk in range(self.args.batchsize):
 
-                    image_gt = T.ToPILImage()(self.model.gt[0, ...].cpu())
-                    image_gt.save(
-                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_gt.jpg"
-                        % (index)
-                    )
+                        image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
+                        image_all.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_%d.jpg"
+                            % (index, kk)
+                        )
 
-            tqdm_bar.set_description(
-                "E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f} br: {:3f} bg: {:3f} bb: {:3f}".format(
-                    epoch,
-                    loss_second.item(),
-                    self.model.brightness,
-                    self.model.contrast,
-                    self.model.saturation,
-                    self.model.b_r,
-                    self.model.b_g,
-                    self.model.b_b,
-                )
-            )
+                        image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
+                        image_i.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_%d_inter.jpg"
+                            % (index, kk)
+                        )
+
+                        image_gt = T.ToPILImage()(gt[kk, ...].cpu())
+                        image_gt.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_%d__gt.jpg"
+                            % (index, kk)
+                        )
+
+                if self.args.multi_GPU:
+                    tqdm_bar.set_description(
+                        "E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f} br: {:3f} bg: {:3f} bb: {:3f}".format(
+                            epoch,
+                            loss_second.item(),
+                            brightness[0].item(),
+                            contrast[0].item(),
+                            saturation[0].item(),
+                            b_r[0].item(),
+                            b_g[0].item(),
+                            b_b[0].item(),
+                        )
+                    )
+                else:
+                    tqdm_bar.set_description(
+                        "E: {}. L: {:3f} b: {:3f} c: {:3f} s: {:3f} br: {:3f} bg: {:3f} bb: {:3f}".format(
+                            epoch,
+                            loss_second.item(),
+                            brightness.item(),
+                            contrast.item(),
+                            saturation.item(),
+                            b_r.item(),
+                            b_g.item(),
+                            b_b.item(),
+                        )
+                    )
             # print(f"\n\n\tEpoch {epoch}. Loss {loss.item()}\n brightness {brightness} contrast {contrast} saturation {saturation} hue {hue}")
             np.save(os.path.join(self.args.logdir, "loss_all.npy"), np.array(losses))
 
-            if epoch % 100 == 0:
+            if epoch % 10 == 0:
                 self.save_model(epoch)
-                image_all = T.ToPILImage()(output_composite[0, ...].cpu())
-                image_all.save(
-                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/tmp1.jpg"
-                )
 
 
 if __name__ == "__main__":
