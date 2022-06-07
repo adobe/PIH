@@ -136,6 +136,7 @@ class PIHDataRandom(Dataset):
             imag_torch, (np.random.rand() * 0.4 + 0.8)
         )
 
+        # Read functions for color transform: Cross - chaneel - YCC
         imag_torch[0, ...] = (
             imag_torch[0, ...] * (np.random.rand() * 0.3 + 0.70)
             + imag_torch[0, ...] * imag_torch[0, ...] * (np.random.rand() - 0.5) * 0.1

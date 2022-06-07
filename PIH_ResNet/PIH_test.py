@@ -131,29 +131,30 @@ class Evaluater:
 
             for kk in range(self.args.batchsize):
 
-                # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
-                # image_all.save(self.tmp + "/results/tmp%d_%d.jpg" % (index, kk))
+                image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
+                image_all.save(self.tmp + "/results/tmp%d_%d.jpg" % (index, kk))
 
-                # image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
-                # image_i.save(self.tmp + "/intermediate/tmp%d_%d.jpg" % (index, kk))
+                image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
+                image_i.save(self.tmp + "/intermediate/tmp%d_%d.jpg" % (index, kk))
 
-                # image_gt = T.ToPILImage()(gt[kk, ...].cpu())
-                # image_gt.save(self.tmp + "/gt/tmp%d_%d.jpg" % (index, kk))
+                if not self.args.ngt:
+                    image_gt = T.ToPILImage()(gt[kk, ...].cpu())
+                    image_gt.save(self.tmp + "/gt/tmp%d_%d.jpg" % (index, kk))
 
                 image_og = T.ToPILImage()(input_image[kk, ...].cpu())
                 image_og.save(self.tmp + "/original/tmp%d_%d.jpg" % (index, kk))
 
-                image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
-                image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))
+                # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
+                # image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))
 
-                image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
-                image_i.save(self.tmp + "/tmp%d_%d_inter.jpg" % (index, kk))
-                if not self.args.ngt:
-                    image_gt = T.ToPILImage()(gt[kk, ...].cpu())
-                    image_gt.save(self.tmp + "/tmp%d_%d_gt.jpg" % (index, kk))
+                # image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
+                # image_i.save(self.tmp + "/tmp%d_%d_inter.jpg" % (index, kk))
+                # if not self.args.ngt:
+                #     image_gt = T.ToPILImage()(gt[kk, ...].cpu())
+                #     image_gt.save(self.tmp + "/tmp%d_%d_gt.jpg" % (index, kk))
 
-                image_og = T.ToPILImage()(input_image[kk, ...].cpu())
-                image_og.save(self.tmp + "/tmp%d_%d_og.jpg" % (index, kk))
+                # image_og = T.ToPILImage()(input_image[kk, ...].cpu())
+                # image_og.save(self.tmp + "/tmp%d_%d_og.jpg" % (index, kk))
 
             if not self.args.ngt:
                 tqdm_bar.set_description(
