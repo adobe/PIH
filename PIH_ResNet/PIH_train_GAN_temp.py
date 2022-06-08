@@ -321,19 +321,25 @@ class Trainer:
 
                         image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                         image_all.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d.jpg"
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_3/tmp%d_%d.jpg"
                             % (index, kk)
                         )
 
                         image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
                         image_i.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d_inter.jpg"
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_3/tmp%d_%d_inter.jpg"
                             % (index, kk)
                         )
 
                         image_gt = T.ToPILImage()(gt[kk, ...].cpu())
                         image_gt.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d__gt.jpg"
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_3/tmp%d_%d__gt.jpg"
+                            % (index, kk)
+                        )
+
+                        image_og = T.ToPILImage()(input_image[kk, ...].cpu())
+                        image_og.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_3/tmp%d_%d__og.jpg"
                             % (index, kk)
                         )
                 if self.gan:
