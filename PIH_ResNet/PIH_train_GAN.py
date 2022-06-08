@@ -10,6 +10,8 @@ from dataset import PIHData, PIHDataRandom, IhdDataset
 from model import Model
 from tqdm import tqdm
 from torch import Tensor
+from . import networks
+
 
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
@@ -84,6 +86,14 @@ def get_args():
         action="store_true",
         help="If specified, will start training (currently only for iHarmony dataset)",
     )
+
+    parser.add_option(
+        "--gan-weight",
+        default=0,
+        type="float",
+        help="GAN weight, default without using GAN",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -96,6 +106,10 @@ class Trainer:
         self.device = torch.device(f"cuda")
 
         print("Using device:", self.device)
+
+        if self.args.gan_weight > 0:
+            self.gan = True
+            self.gan_weight = self.args.gan_weight
 
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
@@ -121,17 +135,31 @@ class Trainer:
         self.data_length = len(self.dataset)
         self.model = Model(feature_dim=self.args.features)
 
+        if self.gan:
+            self.model_D = networks.define_D(7, 64, "basic")
+
         if torch.cuda.device_count() > 1 and self.args.multi_GPU:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
             # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
             self.model = torch.nn.DataParallel(self.model)
+            if self.gan:
+                self.model_D = torch.nn.DataParallel(self.model_D)
 
         self.model.to(self.device)
         # self.model(command="per_gpu_initialize")
         self.criterion = torch.nn.L1Loss()
+
+        if self.gan:
+            self.criterion_GAN = networks.GANLoss("vanilla").to(self.device)
+
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.args.learning_rate
         )
+
+        if self.gan:
+            self.optimizer_D = torch.optim.Adam(
+                self.model_D.parameters(), lr=self.args.learning_rate
+            )
 
         self.start_epoch = 1
         if not self.args.force_train_from_scratch:
@@ -239,12 +267,6 @@ class Trainer:
                         image_gt = T.ToPILImage()(gt[kk, ...].cpu())
                         image_gt.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_%d__gt.jpg"
-                            % (index, kk)
-                        )
-
-                        image_og = T.ToPILImage()(input_image[kk, ...].cpu())
-                        image_og.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results/tmp%d_%d__og.jpg"
                             % (index, kk)
                         )
 

@@ -1,5 +1,5 @@
 from glob import glob
-
+import os
 import numpy as np
 import torch
 
@@ -7,6 +7,7 @@ from PIL import Image
 
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
+
 
 from torch.utils.data import Dataset
 import random
@@ -234,3 +235,67 @@ class PIHDataNGT(Dataset):
             self.transforms_mask(input_mask),
             self.transforms_mask(input_mask),
         )
+
+
+class IhdDataset(Dataset):
+    def __init__(self, opt):
+        self.image_paths = []
+        self.isTrain = opt.train
+        if opt.train == True:
+            print("loading training file")
+            self.trainfile = opt.datadir + "IHD_train.txt"
+            with open(self.trainfile, "r") as f:
+                for line in f.readlines():
+                    self.image_paths.append(
+                        os.path.join(opt.datadir, "", line.rstrip())
+                    )
+        else:
+            print("loading test file")
+            self.trainfile = opt.datadir + "IHD_test.txt"
+            with open(self.trainfile, "r") as f:
+                for line in f.readlines():
+                    self.image_paths.append(
+                        os.path.join(opt.datadir, "", line.rstrip())
+                    )
+        self.transforms = T.Compose([T.ToTensor()])
+        self.transforms_mask = T.Compose([T.Grayscale(), T.ToTensor()])
+        self.image_size = 512
+
+        print(
+            f"Using data from: {opt.datadir}\nFound {len(self.image_paths)} image paths."
+        )
+
+    def __getitem__(self, index):
+
+        path = self.image_paths[index]
+        name_parts = path.split("_")
+        mask_path = self.image_paths[index].replace("composite_images", "masks")
+        mask_path = mask_path.replace(("_" + name_parts[-1]), ".png")
+        target_path = self.image_paths[index].replace("composite_images", "real_images")
+        target_path = target_path.replace(
+            ("_" + name_parts[-2] + "_" + name_parts[-1]), ".jpg"
+        )
+
+        comp = Image.open(path).convert("RGB")
+        real = Image.open(target_path).convert("RGB")
+        mask = Image.open(mask_path).convert("RGB")
+
+        if np.random.rand() > 0.5 and self.isTrain:
+            comp, mask, real = F.hflip(comp), F.hflip(mask), F.hflip(real)
+
+        if not (comp.size[0] == self.image_size and comp.size[1] == self.image_size):
+            # assert 0
+            comp = F.resize(comp, [self.image_size, self.image_size])
+            mask = F.resize(mask, [self.image_size, self.image_size])
+            real = F.resize(real, [self.image_size, self.image_size])
+
+        comp = self.transforms(comp)
+        mask = self.transforms_mask(mask)
+
+        real = self.transforms(real)
+
+        return (comp, mask, real)
+
+    def __len__(self):
+        """Return the total number of images."""
+        return len(self.image_paths)
