@@ -107,7 +107,7 @@ class Evaluater:
 
         tqdm_bar = tqdm(enumerate(self.dataloader), "iteration")
 
-        for index, (input_image, input_mask, gt) in tqdm_bar:
+        for index, (input_image, input_mask, gt, names) in tqdm_bar:
 
             input_image = input_image.to(self.device)
             input_mask = input_mask.to(self.device)
@@ -131,18 +131,20 @@ class Evaluater:
 
             for kk in range(self.args.batchsize):
 
+                name_image = names[0].split("/")[-1]
+
                 image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
-                image_all.save(self.tmp + "/results/tmp%d_%d.jpg" % (index, kk))
+                image_all.save(self.tmp + "/results/%s" % (name_image))
 
                 image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
-                image_i.save(self.tmp + "/intermediate/tmp%d_%d.jpg" % (index, kk))
+                image_i.save(self.tmp + "/intermediate/%s" % (name_image))
 
                 if not self.args.ngt:
                     image_gt = T.ToPILImage()(gt[kk, ...].cpu())
-                    image_gt.save(self.tmp + "/gt/tmp%d_%d.jpg" % (index, kk))
+                    image_gt.save(self.tmp + "/gt/%s" % (name_image))
 
                 image_og = T.ToPILImage()(input_image[kk, ...].cpu())
-                image_og.save(self.tmp + "/original/tmp%d_%d.jpg" % (index, kk))
+                image_og.save(self.tmp + "/original/%s" % (name_image))
 
                 # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 # image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))

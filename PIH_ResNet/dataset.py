@@ -70,6 +70,7 @@ class PIHData(Dataset):
             self.transforms(input_image),
             self.transforms_mask(input_mask),
             self.transforms(ground_truth),
+            image_path,
         )
 
 
@@ -175,6 +176,7 @@ class PIHDataRandom(Dataset):
             imag_composite,
             mask_torch,
             ground_truth,
+            image_path,
         )
 
 
@@ -234,6 +236,7 @@ class PIHDataNGT(Dataset):
             self.transforms(input_image),
             self.transforms_mask(input_mask),
             self.transforms_mask(input_mask),
+            image_path,
         )
 
 
@@ -294,7 +297,7 @@ class IhdDataset(Dataset):
 
         real = self.transforms(real)
 
-        return (comp, mask, real)
+        return (comp, mask, real,image_path)
 
     def __len__(self):
         """Return the total number of images."""

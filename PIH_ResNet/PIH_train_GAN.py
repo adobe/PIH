@@ -99,6 +99,18 @@ def get_args():
         action="store_true",
         help="If specified, will not using recon loss)",
     )
+    parser.add_option(
+        "--conditional",
+        action="store_true",
+        help="If specified, will use conditional gan loss",
+    )
+
+    parser.add_option(
+        "--tempdir",
+        "--tp",
+        default="tmp",
+        help="temp dir for saving intermediate results during the training.",
+    )
     (options, args) = parser.parse_args()
     return options
 
@@ -116,6 +128,7 @@ class Trainer:
             self.gan = True
             self.gan_weight = self.args.gan_weight
             self.norecon = self.args.noreconloss
+            self.conditional = self.args.conditional
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
@@ -141,7 +154,12 @@ class Trainer:
         self.model = Model(feature_dim=self.args.features)
 
         if self.gan:
-            self.model_D = networks.define_D(7, 64, "basic")
+            if self.conditional:
+                print("Using Conditional GAN!")
+                self.model_D = networks.define_D(7, 64, "n_layers", 7)
+            else:
+                print("Using Non-conditional GAN!")
+                self.model_D = networks.define_D(4, 64, "n_layers", 7)
 
         if torch.cuda.device_count() > 1 and self.args.multi_GPU:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -174,6 +192,12 @@ class Trainer:
             self.restore_model()
         else:
             input("Training from scratch. Are you sure? (Ctrl+C to kill):")
+
+        os.makedirs(
+            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s"
+            % (self.args.tempdir),
+            exist_ok=True,
+        )
 
     def restore_model(self):
         """Restore latest model checkpoint (if any) and continue training from there."""
@@ -245,7 +269,7 @@ class Trainer:
             self.model.train()
             tqdm_bar = tqdm(enumerate(self.dataloader), "Index")
 
-            for index, (input_image, input_mask, gt) in tqdm_bar:
+            for index, (input_image, input_mask, gt, names) in tqdm_bar:
 
                 input_image = input_image.to(self.device)
                 input_mask = input_mask.to(self.device)
@@ -273,11 +297,21 @@ class Trainer:
 
                     self.optimizer_D.zero_grad()
 
-                    fake_AB = torch.cat((input_image, input_mask, output_composite), 1)
+                    if self.conditional:
+                        fake_AB = torch.cat(
+                            (input_image, input_mask, output_composite), 1
+                        )
+                    else:
+                        fake_AB = torch.cat((input_mask, output_composite), 1)
+
                     pred_fake = self.model_D(fake_AB.detach())
                     loss_D_fake = self.criterion_GAN(pred_fake, False)
 
-                    real_AB = torch.cat((input_image, input_mask, gt), 1)
+                    if self.conditional:
+                        real_AB = torch.cat((input_image, input_mask, gt), 1)
+                    else:
+                        real_AB = torch.cat((input_mask, gt), 1)
+
                     pred_real = self.model_D(real_AB)
                     loss_D_real = self.criterion_GAN(pred_real, True)
 
@@ -293,7 +327,13 @@ class Trainer:
                         param.requires_grad = False
 
                     self.optimizer.zero_grad()
-                    fake_AB = torch.cat((input_image, input_mask, output_composite), 1)
+                    if self.conditional:
+                        fake_AB = torch.cat(
+                            (input_image, input_mask, output_composite), 1
+                        )
+                    else:
+                        fake_AB = torch.cat((input_mask, output_composite), 1)
+
                     pred_fake = self.model_D(fake_AB)
                     loss_G_adv = self.criterion_GAN(pred_fake, True)
 
@@ -319,22 +359,29 @@ class Trainer:
 
                     for kk in range(self.args.batchsize):
 
+                        name = names[kk].split("/")[-1].split(".")[0]
                         image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                         image_all.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d.jpg"
-                            % (index, kk)
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out.jpg"
+                            % (self.args.tempdir, name[kk])
                         )
 
                         image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
                         image_i.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d_inter.jpg"
-                            % (index, kk)
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_inter.jpg"
+                            % (self.args.tempdir, name[kk])
                         )
 
                         image_gt = T.ToPILImage()(gt[kk, ...].cpu())
                         image_gt.save(
-                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_results_2/tmp%d_%d__gt.jpg"
-                            % (index, kk)
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_gt.jpg"
+                            % (self.args.tempdir, name[kk])
+                        )
+
+                        image_og = T.ToPILImage()(input_image[kk, ...].cpu())
+                        image_og.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_og.jpg"
+                            % (self.args.tempdir, name[kk])
                         )
                 if self.gan:
                     tqdm_bar.set_description(
