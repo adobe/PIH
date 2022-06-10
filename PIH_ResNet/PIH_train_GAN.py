@@ -363,25 +363,25 @@ class Trainer:
                         image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                         image_all.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out.jpg"
-                            % (self.args.tempdir, name[kk])
+                            % (self.args.tempdir, name)
                         )
 
                         image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
                         image_i.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_inter.jpg"
-                            % (self.args.tempdir, name[kk])
+                            % (self.args.tempdir, name)
                         )
 
                         image_gt = T.ToPILImage()(gt[kk, ...].cpu())
                         image_gt.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_gt.jpg"
-                            % (self.args.tempdir, name[kk])
+                            % (self.args.tempdir, name)
                         )
 
                         image_og = T.ToPILImage()(input_image[kk, ...].cpu())
                         image_og.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_og.jpg"
-                            % (self.args.tempdir, name[kk])
+                            % (self.args.tempdir, name)
                         )
                 if self.gan:
                     tqdm_bar.set_description(
