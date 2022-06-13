@@ -35,6 +35,13 @@ def get_args():
         type="int",
         help="Dimension of the feature space.",
     )
+    
+    parser.add_option(
+        "--workers",
+        default=16,
+        type="int",
+        help="Dimension of the feature space.",
+    )
     parser.add_option(
         "--learning-rate",
         "--lr",

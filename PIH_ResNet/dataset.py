@@ -297,7 +297,7 @@ class IhdDataset(Dataset):
 
         real = self.transforms(real)
 
-        return (comp, mask, real,image_path)
+        return (comp, mask, real,path)
 
     def __len__(self):
         """Return the total number of images."""

@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataset import PIHData, PIHDataNGT
+from dataset import PIHData, PIHDataNGT, IhdDataset
 from model import Model
 from tqdm import tqdm
 from torch import Tensor
@@ -35,6 +35,14 @@ def get_args():
         type="int",
         help="Dimension of the feature space.",
     )
+
+    parser.add_option(
+        "--num-testing",
+        default=0,
+        type="int",
+        help="set the number for testing images, default is the entire dataset",
+    )
+
     parser.add_option(
         "--batchsize",
         "--bs",
@@ -49,6 +57,13 @@ def get_args():
         action="store_true",
         help="If specified, inference without ground truth.",
     )
+
+    parser.add_option(
+        "--ihd",
+        action="store_true",
+        help="If specified, will use iHarmony dataset for the training",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -59,7 +74,10 @@ class Evaluater:
         self.args = get_args()
         # self.device = torch.device(f"cuda:{self.args.gpu_id}")
         self.device = torch.device(f"cuda")
-
+        self.num = False
+        if self.args.num_testing > 0:
+            self.num = True
+            self.num_testing = self.args.num_testing
         print("Using device:", self.device)
 
         self.checkpoint_directory = self.args.checkpoints
@@ -67,16 +85,22 @@ class Evaluater:
         self.tmp = self.args.tmp_results
 
         os.makedirs(self.tmp, exist_ok=True)
+        os.makedirs(self.tmp + "/mask/", exist_ok=True)
         os.makedirs(self.tmp + "/original/", exist_ok=True)
         os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
         os.makedirs(self.tmp + "/results/", exist_ok=True)
         if not self.args.ngt:
             os.makedirs(self.tmp + "/gt/", exist_ok=True)
 
-        if self.args.ngt:
-            self.dataset = PIHDataNGT(self.args.datadir, device=self.device)
+        if self.args.ihd:
+            self.args.train = False
+            self.dataset = IhdDataset(self.args)
+
         else:
-            self.dataset = PIHData(self.args.datadir, device=self.device)
+            if self.args.ngt:
+                self.dataset = PIHDataNGT(self.args.datadir, device=self.device)
+            else:
+                self.dataset = PIHData(self.args.datadir, device=self.device)
 
         self.dataloader = DataLoader(
             self.dataset,
@@ -136,6 +160,9 @@ class Evaluater:
                 image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 image_all.save(self.tmp + "/results/%s" % (name_image))
 
+                image_mk = T.ToPILImage()(input_mask[kk, ...].cpu())
+                image_mk.save(self.tmp + "/mask/%s" % (name_image))
+
                 image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
                 image_i.save(self.tmp + "/intermediate/%s" % (name_image))
 
@@ -183,6 +210,8 @@ class Evaluater:
                         b_b.item(),
                     )
                 )
+            if self.num and index > self.num_testing:
+                break
 
 
 if __name__ == "__main__":

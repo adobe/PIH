@@ -44,6 +44,15 @@ def get_args():
         type="float",
         help="learning rate for the model",
     )
+
+    parser.add_option(
+        "--learning-rate-d",
+        "--lrd",
+        default=1e-5,
+        type="float",
+        help="learning rate for the discriminator model",
+    )
+
     parser.add_option(
         "--batchsize",
         "--bs",
@@ -52,6 +61,14 @@ def get_args():
         type="int",
         help="batch size for training",
     )
+
+    parser.add_option(
+        "--workers",
+        default=16,
+        type="int",
+        help="Dimension of the feature space.",
+    )
+
     parser.add_option(
         "-e", "--epochs", default=20000, type="int", help="Number of epochs to train"
     )
@@ -145,8 +162,8 @@ class Trainer:
             self.dataset,
             self.args.batchsize,
             shuffle=True,
-            num_workers=8,
-            prefetch_factor=4,
+            num_workers=self.args.workers,
+            prefetch_factor=8,
             drop_last=True,
         )
 
@@ -156,10 +173,10 @@ class Trainer:
         if self.gan:
             if self.conditional:
                 print("Using Conditional GAN!")
-                self.model_D = networks.define_D(7, 64, "n_layers", 7)
+                self.model_D = networks.define_D(7, 64, "n_layers", 6)
             else:
                 print("Using Non-conditional GAN!")
-                self.model_D = networks.define_D(4, 64, "n_layers", 7)
+                self.model_D = networks.define_D(4, 64, "n_layers", 6)
 
         if torch.cuda.device_count() > 1 and self.args.multi_GPU:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -184,7 +201,7 @@ class Trainer:
 
         if self.gan:
             self.optimizer_D = torch.optim.Adam(
-                self.model_D.parameters(), lr=self.args.learning_rate
+                self.model_D.parameters(), lr=self.args.learning_rate_d
             )
 
         self.start_epoch = 1
