@@ -3,7 +3,7 @@ import torch
 import sys
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
-from resnet import resnet18
+from resnet import resnet18, resnet34
 
 
 class ColorStep1(torch.nn.Module):
@@ -172,6 +172,58 @@ class Model(torch.nn.Module):
         input_composite = self.CT1(input_image, embeddings, input_mask)
 
         inputs_color = torch.cat((input_image, input_composite, input_mask), 1)
+
+        embeddings_2 = self.color(inputs_color)[0]
+
+        b_r = embeddings_2[0, 1]
+        b_g = embeddings_2[0, 5]
+        b_b = embeddings_2[0, 9]
+
+        output_composite = self.CT2(
+            input_composite, embeddings_2, input_mask, input_image
+        )
+        # inter_features = self.network(images)[1]
+
+        return (
+            input_composite,
+            output_composite,
+            [brightness, contrast, saturation],
+            [b_r, b_g, b_b],
+        )
+
+
+class Model_Composite(torch.nn.Module):
+    def __init__(self, feature_dim=3, color_space=12):
+        super().__init__()
+        self.feature_dim = feature_dim
+        self.network = resnet34(
+            num_classes=feature_dim, input_f=7
+        )  ## Background - composite - mask
+
+        self.color = resnet34(
+            num_classes=color_space, input_f=10
+        )  ## Background - composite - intermediate - mask
+
+        self.CT1 = ColorStep1()
+        self.CT2 = ColorStep2()
+
+    def forward(self, background, input_image, input_mask):
+
+        # On the device
+
+        input_all = torch.cat((background, input_image, input_mask), 1)
+
+        embeddings = self.network(input_all)[0]
+
+        brightness = embeddings[0, 0]
+        contrast = embeddings[0, 1]
+        saturation = embeddings[0, 2]
+
+        input_composite = self.CT1(input_image, embeddings, input_mask)
+
+        inputs_color = torch.cat(
+            (background, input_image, input_composite, input_mask), 1
+        )
 
         embeddings_2 = self.color(inputs_color)[0]
 

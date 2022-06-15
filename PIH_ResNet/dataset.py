@@ -297,8 +297,178 @@ class IhdDataset(Dataset):
 
         real = self.transforms(real)
 
-        return (comp, mask, real,path)
+        return (comp, mask, real, path)
 
     def __len__(self):
         """Return the total number of images."""
         return len(self.image_paths)
+
+
+class DataCompositeGAN(Dataset):
+    def __init__(self, data_directory):
+        """
+
+        Parameters
+        ----------
+        data_directory : str
+            The directory containing the training image data.
+        max_offset : tuple
+            The maximum offset to crop an image to.
+        magnitude : bool
+            If True, train using magnitude image as input. Otherwise, use real and imaginary image in separate channels.
+        device : torch.device
+            The device to load the data to.
+        complex : bool
+            If True, return images as complex data. Otherwise check for magnitude return or for real and imaginary
+            channels. This is needed when training, since post processing is done in the model (adds phase augmentation
+            and converts to magnitude or channels). Magnitude and channels are implemented for evaluation.
+        """
+
+        self.image_paths = glob(f"{data_directory}/masks/*_mask.png")
+        self.length = len(self.image_paths)
+        print(
+            f"Using data from: {data_directory}\nFound {len(self.image_paths)} image paths."
+        )
+        self.transforms = T.Compose([T.ToTensor()])
+        self.transforms_mask = T.Compose([T.Grayscale(), T.ToTensor()])
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, index):
+        """Get image at the specified index.
+
+        Parameters
+        ----------
+        index : int
+            The image index.
+
+        Returns
+        -------
+        patch: torch.Tensor
+
+        Foreground
+        """
+
+        path_fg = self.image_paths[index]  # ForeGround
+
+        path_bg = self.image_paths[np.random.randint(0, self.length)]
+
+        ### fore-ground image loading
+
+        path_fg_image = path_fg.replace("masks/", "real_images/")
+        path_fg_image = path_fg_image.replace("_mask.png", ".jpg")
+
+        path_fg_bg = path_fg.replace("masks/", "bg/")
+
+        mask_fg = Image.open(path_fg)
+
+        image_fg = Image.open(path_fg_image)
+
+        image_fg_bg = Image.open(path_fg_bg)
+
+        ### back-ground image loading
+
+        path_bg_image = path_bg.replace("masks/", "real_images/")
+        path_bg_image = path_bg_image.replace("_mask.png", ".jpg")
+
+        path_bg_bg = path_bg.replace("masks/", "bg/")
+
+        mask_bg = Image.open(path_bg)
+
+        image_bg = Image.open(path_bg_image)
+
+        image_bg_bg = Image.open(path_bg_bg)
+
+        mask_bg_bbox = mask_bg.getbbox()
+        mask_fg_bbox = mask_fg.getbbox()
+
+        ## Target
+        x_1_1, y_1_1, x_1_2, y_1_2 = mask_bg_bbox
+        center_1_x = (x_1_1 + x_1_2) / 2
+        center_1_y = (y_1_1 + y_1_2) / 2
+
+        ##
+        x_2_1, y_2_1, x_2_2, y_2_2 = mask_fg_bbox
+        ration_x = (x_1_2 - x_1_1) / (x_2_2 - x_2_1) if x_2_2 != x_2_1 else 1
+        ration_y = (y_1_2 - y_1_1) / (y_2_2 - y_2_1) if y_2_2 != y_2_1 else 1
+
+        ## Scaling
+        mask_fg_aff = F.affine(
+            mask_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
+        )
+        image_fg_aff = F.affine(
+            image_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
+        )
+        if mask_fg_aff.getbbox() == None:
+            mask_fg_aff = F.affine(mask_fg, angle=0, translate=[0, 0], scale=1, shear=0)
+
+        x_2_1_a, y_2_1_a, x_2_2_a, y_2_2_a = mask_fg_aff.getbbox()
+        center_2_x_a = (x_2_1_a + x_2_2_a) / 2
+        center_2_y_a = (y_2_1_a + y_2_2_a) / 2
+
+        shift_fg_x = np.random.randint(-5, 5)
+        shift_fg_y = np.random.randint(-5, 5)
+
+        mask_fg_aff_all = F.affine(
+            mask_fg_aff,
+            angle=0,
+            translate=[
+                center_1_x - center_2_x_a + shift_fg_x,
+                center_1_y - center_2_y_a + shift_fg_y,
+            ],
+            scale=1,
+            shear=0,
+        )
+        image_fg_aff_all = F.affine(
+            image_fg_aff,
+            angle=0,
+            translate=[
+                center_1_x - center_2_x_a + shift_fg_x,
+                center_1_y - center_2_y_a + shift_fg_y,
+            ],
+            scale=1,
+            shear=0,
+        )
+
+        im_composite = Image.composite(image_fg_aff_all, image_bg_bg, mask_fg_aff_all)
+
+        ## What we want to output? Background, im_composite, mask_fg_aff_all, real_image
+
+        shift_bg_x = np.random.randint(-5, 5)
+        shift_bg_y = np.random.randint(-5, 5)
+
+        mask_bg_shift = F.affine(
+            mask_bg,
+            angle=0,
+            translate=[
+                shift_bg_x,
+                shift_bg_y,
+            ],
+            scale=1,
+            shear=0,
+        )
+
+        image_bg_shift = F.affine(
+            image_bg,
+            angle=0,
+            translate=[
+                shift_bg_x,
+                shift_bg_y,
+            ],
+            scale=1,
+            shear=0,
+        )
+
+        im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
+
+        # Dataset output orders: 1. Background (inpainted) 2. Image Composite 3. Mask 4. Real Image
+        return (
+            self.transforms(image_bg_bg),
+            self.transforms(im_composite),
+            self.transforms_mask(mask_fg_aff_all),
+            self.transforms(im_real),
+            self.transforms_mask(mask_bg_shift),
+            path_fg,
+            path_bg,
+        )
