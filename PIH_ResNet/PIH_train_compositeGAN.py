@@ -7,11 +7,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from dataset import DataCompositeGAN
-from model import Model, Model_Composite
+from model import Model, Model_Composite, Model_UNet
 from tqdm import tqdm
 from torch import Tensor
 import networks
-
+from unet_dis import UNetDiscriminatorSN
 
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
@@ -40,7 +40,7 @@ def get_args():
 
     parser.add_option(
         "--frequency",
-        default=3,
+        default=1,
         type="int",
         help="frequency to update discriminator",
     )
@@ -96,10 +96,73 @@ def get_args():
     )
 
     parser.add_option(
+        "--unet",
+        action="store_true",
+        help="If specified, training will use UNet.",
+    )
+
+    parser.add_option(
+        "--unetmask",
+        action="store_true",
+        help="If specified, training will use unet mask.",
+    )
+
+    parser.add_option(
+        "--reconloss",
+        action="store_true",
+        help="If specified, training will use reconloss on the mask.",
+    )
+
+    parser.add_option(
+        "--reconweight",
+        default=1,
+        type="float",
+        help="Recon weight",
+    )
+    parser.add_option(
+        "--inputdim",
+        default=3,
+        type="int",
+        help="Dimension of the input image.",
+    )
+    parser.add_option(
+        "--sgd",
+        action="store_true",
+        help="If specified, training will use SGD Optimizer.",
+    )
+    parser.add_option(
+        "--pixel",
+        action="store_true",
+        help="If specified, using pixel discrinimator.",
+    )
+    parser.add_option(
+        "--unetd",
+        action="store_true",
+        help="If specified, using unet discrinimator.",
+    )
+
+    parser.add_option(
+        "--unetdnoskip",
+        action="store_true",
+        help="If specified, not using skip connection for unet discrinimator.",
+    )
+    parser.add_option(
         "--tempdir",
         "--tp",
         default="tmp",
         help="temp dir for saving intermediate results during the training.",
+    )
+
+    parser.add_option(
+        "--trainingratio",
+        default=1,
+        type="float",
+        help="Ratio for the training data. (e.g., 0.1 indicates using 10 percent of the data for training)",
+    )
+    parser.add_option(
+        "--ganlossmask",
+        action="store_true",
+        help="If specified, will use gan loss for mask.",
     )
     (options, args) = parser.parse_args()
     return options
@@ -117,7 +180,7 @@ class Trainer:
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
-        self.dataset = DataCompositeGAN(self.args.datadir)
+        self.dataset = DataCompositeGAN(self.args.datadir, self.args.trainingratio)
 
         self.dataloader = DataLoader(
             self.dataset,
@@ -129,9 +192,22 @@ class Trainer:
         )
 
         self.data_length = len(self.dataset)
-        self.model = Model_Composite(feature_dim=self.args.features)
 
-        self.model_D = networks.define_D(4, 64, "n_layers", 6)
+        if self.args.unet:
+            self.model = Model_UNet(input=self.args.inputdim)
+        else:
+            self.model = Model_Composite(feature_dim=self.args.features)
+
+        if self.args.pixel:
+            self.model_D = networks.define_D(3, 64, "pixel")
+        else:
+            if self.args.unetd:
+                if self.args.unetdnoskip:
+                    self.model_D = UNetDiscriminatorSN(skip_connection=False)
+                else:
+                    self.model_D = UNetDiscriminatorSN()
+            else:
+                self.model_D = networks.define_D(3, 64, "n_layers", 3)
 
         if torch.cuda.device_count() > 1 and self.args.multi_GPU:
             print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -144,15 +220,28 @@ class Trainer:
 
         self.model_D.to(self.device)
 
-        self.criterion_GAN = networks.GANLoss("vanilla").to(self.device)
+        self.criterion_GAN = networks.GANLoss(
+            "vanilla", gan_loss_mask=self.args.ganlossmask
+        ).to(self.device)
+
+        if self.args.reconloss:
+            self.reconloss = torch.nn.L1Loss()
 
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=self.args.learning_rate
         )
 
-        self.optimizer_D = torch.optim.SGD(
-            self.model_D.parameters(), lr=self.args.learning_rate_d, momentum=0.9
-        )
+        if self.args.sgd:
+            print("Using SGD")
+            self.optimizer_D = torch.optim.SGD(
+                self.model_D.parameters(), lr=self.args.learning_rate_d, momentum=0.9
+            )
+        else:
+            print("Using Adam")
+
+            self.optimizer_D = torch.optim.Adam(
+                self.model_D.parameters(), lr=self.args.learning_rate_d
+            )
 
         self.start_epoch = 1
         if not self.args.force_train_from_scratch:
@@ -235,11 +324,18 @@ class Trainer:
                 im_composite = im_composite.to(self.device)
                 mask = mask.to(self.device)
                 im_real = im_real.to(self.device)
-                mask_bg = mask_bg.to(self.device)
+                # mask_bg = mask_bg.to(self.device)
 
-                input_composite, output_composite, par1, par2 = self.model(
-                    image_bg_bg, im_composite, mask
-                )
+                if self.args.unet:
+                    # print("Using UNet")
+                    input_composite, output_composite, par1, par2 = self.model(
+                        im_composite, mask, image_bg_bg, mask=self.args.unetmask
+                    )
+                    # print(output_composite.max())
+                else:
+                    input_composite, output_composite, par1, par2 = self.model(
+                        image_bg_bg, im_composite, mask
+                    )
 
                 brightness, contrast, saturation = par1
                 b_r, b_g, b_b = par2
@@ -253,15 +349,27 @@ class Trainer:
 
                     self.optimizer_D.zero_grad()
 
-                    fake_AB = torch.cat((mask, output_composite), 1)
+                    # fake_AB = torch.cat((mask, output_composite), 1)
+
+                    fake_AB = output_composite.clone()
 
                     pred_fake = self.model_D(fake_AB.detach())
-                    loss_D_fake = self.criterion_GAN(pred_fake, False)
+                    # print(pred_fake.shape)
+                    if self.args.ganlossmask:
+                        loss_D_fake = self.criterion_GAN(pred_fake, False, mask=mask)
+                    else:
+                        loss_D_fake = self.criterion_GAN(pred_fake, False)
 
-                    real_AB = torch.cat((mask_bg, im_real), 1)
+                    # real_AB = torch.cat((mask_bg, im_real), 1)
+                    real_AB = im_real.clone()
 
                     pred_real = self.model_D(real_AB)
-                    loss_D_real = self.criterion_GAN(pred_real, True)
+
+                    # print("Real_label mean: %f  Fake label mean: %f"%(pred_real.mean(),pred_fake.mean()))
+                    if self.args.ganlossmask:
+                        loss_D_real = self.criterion_GAN(pred_real, True, mask=mask)
+                    else:
+                        loss_D_real = self.criterion_GAN(pred_real, True)
 
                     loss_D = 0.5 * (loss_D_fake + loss_D_real)
 
@@ -276,10 +384,21 @@ class Trainer:
 
                 self.optimizer.zero_grad()
 
-                fake_AB = torch.cat((mask, output_composite), 1)
+                fake_AB = output_composite.clone()
 
                 pred_fake = self.model_D(fake_AB)
-                loss_G_adv = self.criterion_GAN(pred_fake, True)
+                if self.args.ganlossmask:
+
+                    loss_G_adv = self.criterion_GAN(pred_fake, True, mask=mask)
+                else:
+                    loss_G_adv = self.criterion_GAN(pred_fake, True)
+
+                if self.args.reconloss:
+                    # print("New")
+                    # print(self.args.reconweight*self.reconloss(input_composite*(1-mask), output_composite*(1-mask)).item())
+                    loss_G_adv += self.args.reconweight * self.reconloss(
+                        im_composite * (1 - mask), output_composite * (1 - mask)
+                    )
 
                 loss_G_adv.backward()
 
@@ -296,25 +415,46 @@ class Trainer:
                             + bname[kk].split("/")[-1].split(".")[0]
                         )
                         name = "%d_%d" % (index, kk)
-                        image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
+                        image_all = T.ToPILImage()(
+                            output_composite[kk, ...].cpu().clamp(0, 1)
+                        )
+
+                        image_dis = T.ToPILImage()(pred_fake[kk, ...].cpu().clamp(0, 1))
+                        image_dis.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_dis_score_fake.jpg"
+                            % (self.args.tempdir, name)
+                        )
+
+                        image_dis_true = T.ToPILImage()(
+                            pred_real[kk, ...].cpu().clamp(0, 1)
+                        )
+                        image_dis_true.save(
+                            "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_dis_score_real.jpg"
+                            % (self.args.tempdir, name)
+                        )
+
                         image_all.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out.jpg"
                             % (self.args.tempdir, name)
                         )
 
-                        image_i = T.ToPILImage()(input_composite[kk, ...].cpu())
+                        image_i = T.ToPILImage()(
+                            input_composite[kk, ...].cpu().clamp(0, 1)
+                        )
                         image_i.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_inter.jpg"
                             % (self.args.tempdir, name)
                         )
 
-                        image_real = T.ToPILImage()(im_real[kk, ...].cpu())
+                        image_real = T.ToPILImage()(im_real[kk, ...].cpu().clamp(0, 1))
                         image_real.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real.jpg"
                             % (self.args.tempdir, name)
                         )
 
-                        image_og = T.ToPILImage()(im_composite[kk, ...].cpu())
+                        image_og = T.ToPILImage()(
+                            im_composite[kk, ...].cpu().clamp(0, 1)
+                        )
                         image_og.save(
                             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_composite.jpg"
                             % (self.args.tempdir, name)

@@ -4,6 +4,7 @@ import sys
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 from resnet import resnet18, resnet34
+from unet.unet_model import UNet
 
 
 class ColorStep1(torch.nn.Module):
@@ -197,11 +198,11 @@ class Model_Composite(torch.nn.Module):
         super().__init__()
         self.feature_dim = feature_dim
         self.network = resnet34(
-            num_classes=feature_dim, input_f=7
+            num_classes=feature_dim, input_f=6
         )  ## Background - composite - mask
 
         self.color = resnet34(
-            num_classes=color_space, input_f=10
+            num_classes=color_space, input_f=9
         )  ## Background - composite - intermediate - mask
 
         self.CT1 = ColorStep1()
@@ -211,7 +212,7 @@ class Model_Composite(torch.nn.Module):
 
         # On the device
 
-        input_all = torch.cat((background, input_image, input_mask), 1)
+        input_all = torch.cat((input_image, background), 1)
 
         embeddings = self.network(input_all)[0]
 
@@ -222,7 +223,7 @@ class Model_Composite(torch.nn.Module):
         input_composite = self.CT1(input_image, embeddings, input_mask)
 
         inputs_color = torch.cat(
-            (background, input_image, input_composite, input_mask), 1
+            (input_image, background, input_composite), 1
         )
 
         embeddings_2 = self.color(inputs_color)[0]
@@ -241,4 +242,45 @@ class Model_Composite(torch.nn.Module):
             output_composite,
             [brightness, contrast, saturation],
             [b_r, b_g, b_b],
+        )
+
+
+class Model_UNet(torch.nn.Module):
+    def __init__(self, input=3, output=3):
+        super().__init__()
+        self.input = input
+        self.network = UNet(
+            n_channels=input, n_classes=output
+        )  ## Background - composite - mask
+
+    def forward(self, input_image, input_mask, input_bg, mask=True):
+
+        if self.input == 4:
+            input_image = torch.cat((input_image, input_mask), 1)
+
+        elif self.input == 6:
+            input_image = torch.cat((input_image, input_bg), 1)
+        elif self.input == 7:
+            input_image = torch.cat((input_image, input_bg, input_mask), 1)
+
+        # On the device
+        # input_all = torch.cat((input_image, input_mask), 1)
+
+        # print(self.input)
+        if mask:
+
+            output_composite = self.network(input_image) * input_mask + input_image[
+                :, :3, ...
+            ] * (1 - input_mask)
+        else:
+            output_composite = self.network(input_image)
+
+        # inter_features = self.network(images)[1]
+        a = output_composite[0, 0, 0, 0]
+
+        return (
+            output_composite,
+            output_composite,
+            [a, a, a],
+            [a, a, a],
         )

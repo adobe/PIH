@@ -305,26 +305,19 @@ class IhdDataset(Dataset):
 
 
 class DataCompositeGAN(Dataset):
-    def __init__(self, data_directory):
+    def __init__(self, data_directory, ratio=1):
         """
 
         Parameters
         ----------
         data_directory : str
             The directory containing the training image data.
-        max_offset : tuple
-            The maximum offset to crop an image to.
-        magnitude : bool
-            If True, train using magnitude image as input. Otherwise, use real and imaginary image in separate channels.
-        device : torch.device
-            The device to load the data to.
-        complex : bool
-            If True, return images as complex data. Otherwise check for magnitude return or for real and imaginary
-            channels. This is needed when training, since post processing is done in the model (adds phase augmentation
-            and converts to magnitude or channels). Magnitude and channels are implemented for evaluation.
         """
 
         self.image_paths = glob(f"{data_directory}/masks/*_mask.png")
+
+        self.image_paths = self.image_paths[0 : int(len(self.image_paths) * ratio)]
+
         self.length = len(self.image_paths)
         print(
             f"Using data from: {data_directory}\nFound {len(self.image_paths)} image paths."

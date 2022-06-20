@@ -258,7 +258,7 @@ class GANLoss(nn.Module):
     that has the same size as the input.
     """
 
-    def __init__(self, gan_mode, target_real_label=1.0, target_fake_label=0.0):
+    def __init__(self, gan_mode, gan_loss_mask=False, target_real_label=1.0, target_fake_label=0.0):
         """Initialize the GANLoss class.
         Parameters:
             gan_mode (str) - - the type of GAN objective. It currently supports vanilla, lsgan, and wgangp.
@@ -271,10 +271,14 @@ class GANLoss(nn.Module):
         self.register_buffer("real_label", torch.tensor(target_real_label))
         self.register_buffer("fake_label", torch.tensor(target_fake_label))
         self.gan_mode = gan_mode
+        self.gan_loss_mask = gan_loss_mask
         if gan_mode == "lsgan":
             self.loss = nn.MSELoss()
         elif gan_mode == "vanilla":
-            self.loss = nn.BCEWithLogitsLoss()
+            if self.gan_loss_mask:
+                self.loss = nn.BCEWithLogitsLoss(reduction='none')
+            else:
+                self.loss = nn.BCEWithLogitsLoss()
         elif gan_mode in ["wgangp"]:
             self.loss = None
         else:
@@ -295,7 +299,7 @@ class GANLoss(nn.Module):
             target_tensor = self.fake_label
         return target_tensor.expand_as(prediction)
 
-    def __call__(self, prediction, target_is_real):
+    def __call__(self, prediction, target_is_real,mask=None):
         """Calculate loss given Discriminator's output and grount truth labels.
         Parameters:
             prediction (tensor) - - tpyically the prediction output from a discriminator
@@ -306,6 +310,9 @@ class GANLoss(nn.Module):
         if self.gan_mode in ["lsgan", "vanilla"]:
             target_tensor = self.get_target_tensor(prediction, target_is_real)
             loss = self.loss(prediction, target_tensor)
+            if self.gan_loss_mask:
+                # print(loss.shape)
+                loss = (loss*mask).mean()
         elif self.gan_mode == "wgangp":
             if target_is_real:
                 loss = -prediction.mean()
