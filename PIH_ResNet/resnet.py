@@ -150,6 +150,7 @@ class ResNet(nn.Module):
         groups=1,
         width_per_group=64,
         norm_layer=None,
+        sigmoid=False,
     ):
         super(ResNet, self).__init__()
         if norm_layer is None:
@@ -177,7 +178,7 @@ class ResNet(nn.Module):
         )
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-        self.sigmoid = nn.Sigmoid()
+        self.sigmoid = sigmoid
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
@@ -245,7 +246,10 @@ class ResNet(nn.Module):
         x = self.avgpool(x1)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
-        x = abs(x)
+        if self.sigmoid:
+            x = nn.Sigmoid()(x)
+        else:
+            x = abs(x)
         # x = f.normalize(x, p=2, dim=1)
         return x, x1
 
@@ -276,13 +280,18 @@ def resnet18_m(pretrained=False, num_classes=1000, **kwargs):
     return model
 
 
-def resnet34(pretrained=False, input_f=4, num_classes=1000, **kwargs):
+def resnet34(pretrained=False, input_f=4, num_classes=1000, sigmoid=False, **kwargs):
     """Constructs a ResNet-34 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
     model = ResNet(
-        BasicBlock, [3, 4, 6, 3], input_f=input_f, num_classes=num_classes, **kwargs
+        BasicBlock,
+        [3, 4, 6, 3],
+        input_f=input_f,
+        num_classes=num_classes,
+        sigmoid=sigmoid,
+        **kwargs
     )
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls["resnet34"]))

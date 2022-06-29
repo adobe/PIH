@@ -3,8 +3,39 @@ import torch
 import sys
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
+import torch.nn.functional as FN
+
 from resnet import resnet18, resnet34
 from unet.unet_model import UNet
+
+
+class LUT3D(torch.nn.Module):
+    """A layer to apply an RGBTable."""
+
+    def __init__(self):
+        super(LUT3D, self).__init__()
+
+    def forward(self, lut, img):
+        """
+        Args:
+            lut: LUT to be applied, a 5-d tensor. First dimension is batch.
+                For a pixel of value (R, G, B), it maps it to
+                R' = lut[:, 0, B, G, R],
+                G' = lut[:, 1, B, G, R],
+                B' = lut[:, 2, B, G, R].
+                The "BGR" order is because torch.grid_sample assumes guide_map of
+                shape D x H x W, but the coord in grid is (x, y, z) , which is
+                (R, G, B) in our case.
+            img: input images, of shape B x C x H x W, in range [0, 1]
+        Returns:
+            out: output images, of shape B x C x H x W
+        """
+        guidemap = img * 2.0 - 1.0
+        guidemap = guidemap.permute(0, 2, 3, 1).contiguous().unsqueeze(1)
+        out = FN.grid_sample(
+            lut, guidemap, mode="bilinear", padding_mode="border", align_corners=False
+        ).squeeze(2)
+        return out
 
 
 class ColorStep1(torch.nn.Module):
@@ -194,25 +225,38 @@ class Model(torch.nn.Module):
 
 
 class Model_Composite(torch.nn.Module):
-    def __init__(self, feature_dim=3, color_space=12):
+    def __init__(self, feature_dim=3, color_space=12, LUT=False, LUTdim=8, curve=True):
         super().__init__()
         self.feature_dim = feature_dim
         self.network = resnet34(
-            num_classes=feature_dim, input_f=6
-        )  ## Background - composite - mask
+            num_classes=feature_dim, input_f=7
+        )  ## Background - composite
 
         self.color = resnet34(
-            num_classes=color_space, input_f=9
-        )  ## Background - composite - intermediate - mask
+            num_classes=color_space, input_f=10
+        )  ## Background - composite - intermediate
 
         self.CT1 = ColorStep1()
         self.CT2 = ColorStep2()
+        self.lut = LUT
+        self.lutdim = LUTdim
+        self.curve = curve
+        print(self.curve)
+        print("lutdim: %d" % (self.lutdim))
+        if self.lut:
+            self.lutnet = resnet34(
+                num_classes=3 * LUTdim * LUTdim * LUTdim,
+                input_f=13,
+                sigmoid=True,
+            )
+            self.LUT3D = LUT3D()
 
     def forward(self, background, input_image, input_mask):
 
         # On the device
 
-        input_all = torch.cat((input_image, background), 1)
+        input_all = torch.cat((input_image, background, input_mask), 1)
+        # input_all = torch.cat((input_image, background), 1)
 
         embeddings = self.network(input_all)[0]
 
@@ -222,27 +266,72 @@ class Model_Composite(torch.nn.Module):
 
         input_composite = self.CT1(input_image, embeddings, input_mask)
 
-        inputs_color = torch.cat(
-            (input_image, background, input_composite), 1
-        )
+        if self.curve:
+            inputs_color = torch.cat(
+                (input_image, background, input_composite, input_mask), 1
+            )
+            # inputs_color = torch.cat((input_image, background, input_composite), 1)
 
-        embeddings_2 = self.color(inputs_color)[0]
+            embeddings_2 = self.color(inputs_color)[0]
 
-        b_r = embeddings_2[0, 1]
-        b_g = embeddings_2[0, 5]
-        b_b = embeddings_2[0, 9]
+            b_r = embeddings_2[0, 1]
+            b_g = embeddings_2[0, 5]
+            b_b = embeddings_2[0, 9]
 
-        output_composite = self.CT2(
-            input_composite, embeddings_2, input_mask, input_image
-        )
+            output_composite = self.CT2(
+                input_composite, embeddings_2, input_mask, input_image
+            )
+        else:
+            output_composite = input_composite.clone()
+            b_r = input_image[0, 0, 0, 0]
+            b_g = input_image[0, 0, 0, 0]
+            b_b = input_image[0, 0, 0, 0]
+
         # inter_features = self.network(images)[1]
 
-        return (
-            input_composite,
-            output_composite,
-            [brightness, contrast, saturation],
-            [b_r, b_g, b_b],
-        )
+        if self.lut:
+            inputs_lut = torch.cat(
+                (
+                    input_image,
+                    background,
+                    input_composite,
+                    output_composite,
+                    input_mask,
+                ),
+                1,
+            )
+            # inputs_lut = torch.cat(
+            #     (
+            #         input_image,
+            #         background,
+            #         input_composite,
+            #         output_composite,
+            #     ),
+            #     1,
+            # )
+            lut_table = self.lutnet(inputs_lut)[0]
+            lut_table = torch.reshape(
+                lut_table,
+                (lut_table.shape[0], 3, self.lutdim, self.lutdim, self.lutdim),
+            )
+            lut_composite = (
+                self.LUT3D(lut_table, output_composite) * input_mask
+                + (1 - input_mask) * output_composite
+            )
+            return (
+                input_composite,
+                lut_composite,
+                [brightness, contrast, saturation],
+                [b_r, b_g, b_b],
+            )
+
+        else:
+            return (
+                input_composite,
+                output_composite,
+                [brightness, contrast, saturation],
+                [b_r, b_g, b_b],
+            )
 
 
 class Model_UNet(torch.nn.Module):

@@ -164,6 +164,28 @@ def get_args():
         action="store_true",
         help="If specified, will use gan loss for mask.",
     )
+    parser.add_option(
+        "--lut",
+        action="store_true",
+        help="If specified, will use lut as last step.",
+    )
+    parser.add_option(
+        "--nocurve",
+        action="store_true",
+        help="If specified, will not use curve.",
+    )
+    parser.add_option(
+        "--inputdimD",
+        default=3,
+        type="int",
+        help="Dimension of the input image for D.",
+    )
+    parser.add_option(
+        "--lut-dim",
+        default=8,
+        type="int",
+        help="Dimension of the LUT.",
+    )
     (options, args) = parser.parse_args()
     return options
 
@@ -196,16 +218,28 @@ class Trainer:
         if self.args.unet:
             self.model = Model_UNet(input=self.args.inputdim)
         else:
-            self.model = Model_Composite(feature_dim=self.args.features)
+            if self.args.lut:
+                self.model = Model_Composite(
+                    feature_dim=self.args.features,
+                    LUT=True,
+                    LUTdim=self.args.lut_dim,
+                    curve=not self.args.nocurve,
+                )
+
+            else:
+                self.model = Model_Composite(feature_dim=self.args.features)
 
         if self.args.pixel:
             self.model_D = networks.define_D(3, 64, "pixel")
         else:
             if self.args.unetd:
+                print("Input dim for discriminator: %d" % (self.args.inputdimD))
                 if self.args.unetdnoskip:
-                    self.model_D = UNetDiscriminatorSN(skip_connection=False)
+                    self.model_D = UNetDiscriminatorSN(
+                        input_dim=self.args.inputdimD, skip_connection=False
+                    )
                 else:
-                    self.model_D = UNetDiscriminatorSN()
+                    self.model_D = UNetDiscriminatorSN(input_dim=self.args.inputdimD)
             else:
                 self.model_D = networks.define_D(3, 64, "n_layers", 3)
 
@@ -324,7 +358,7 @@ class Trainer:
                 im_composite = im_composite.to(self.device)
                 mask = mask.to(self.device)
                 im_real = im_real.to(self.device)
-                # mask_bg = mask_bg.to(self.device)
+                mask_bg = mask_bg.to(self.device)
 
                 if self.args.unet:
                     # print("Using UNet")
@@ -333,6 +367,7 @@ class Trainer:
                     )
                     # print(output_composite.max())
                 else:
+
                     input_composite, output_composite, par1, par2 = self.model(
                         image_bg_bg, im_composite, mask
                     )
@@ -349,10 +384,23 @@ class Trainer:
 
                     self.optimizer_D.zero_grad()
 
-                    # fake_AB = torch.cat((mask, output_composite), 1)
+                    if self.args.inputdimD == 3:
+                        # fake_AB = torch.cat((mask, output_composite), 1)
 
-                    fake_AB = output_composite.clone()
+                        fake_AB = output_composite.clone()
+                    elif self.args.inputdimD == 4:
+                        fake_AB = torch.cat((mask, output_composite), 1)
 
+                    elif self.args.inputdimD == 6:
+                        fake_AB = torch.cat((image_bg_bg, output_composite), 1)
+
+                    elif self.args.inputdimD == 7:
+                        fake_AB = torch.cat((image_bg_bg, mask, output_composite), 1)
+
+                    else:
+                        print(
+                            "Using a wrong input dimension for discriminator, supporting 3, 6, 7"
+                        )
                     pred_fake = self.model_D(fake_AB.detach())
                     # print(pred_fake.shape)
                     if self.args.ganlossmask:
@@ -361,7 +409,19 @@ class Trainer:
                         loss_D_fake = self.criterion_GAN(pred_fake, False)
 
                     # real_AB = torch.cat((mask_bg, im_real), 1)
-                    real_AB = im_real.clone()
+                    if self.args.inputdimD == 3:
+
+                        real_AB = im_real.clone()
+
+                    elif self.args.inputdimD == 4:
+                        real_AB = torch.cat((mask_bg, im_real), 1)
+
+                    elif self.args.inputdimD == 6:
+                        real_AB = torch.cat((image_bg_bg, im_real), 1)
+
+                    elif self.args.inputdimD == 7:
+
+                        real_AB = torch.cat((image_bg_bg, mask_bg, im_real), 1)
 
                     pred_real = self.model_D(real_AB)
 
@@ -384,7 +444,23 @@ class Trainer:
 
                 self.optimizer.zero_grad()
 
-                fake_AB = output_composite.clone()
+                if self.args.inputdimD == 3:
+                    # fake_AB = torch.cat((mask, output_composite), 1)
+
+                    fake_AB = output_composite.clone()
+                elif self.args.inputdimD == 4:
+                    fake_AB = torch.cat((mask, output_composite), 1)
+
+                elif self.args.inputdimD == 6:
+                    fake_AB = torch.cat((image_bg_bg, output_composite), 1)
+
+                elif self.args.inputdimD == 7:
+                    fake_AB = torch.cat((image_bg_bg, mask, output_composite), 1)
+
+                else:
+                    print(
+                        "Using a wrong input dimension for discriminator, supporting 3, 6, 7"
+                    )
 
                 pred_fake = self.model_D(fake_AB)
                 if self.args.ganlossmask:
