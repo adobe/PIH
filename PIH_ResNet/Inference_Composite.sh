@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=$3
 
 mkdir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/
 
-CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN.py --datadir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_composite_2000/ \
+CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN.py --datadir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_self/ \
                                            -g 0 \
                                            --checkpoints $1 \
                                            --tmp_results /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/results_testing/ \
@@ -16,8 +16,9 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN.py --datadir /home/kewang/s
                                            --composite \
                                            --lut \
                                            --lut-dim 16 \
-                                           --num-testing 2000 \
+                                           --num-testing 500 \
                                            --nocurve \
+                                           --piecewiselinear \
 
 mkdir /home/kewang/website_michael/results/$2/
 

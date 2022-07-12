@@ -334,6 +334,80 @@ class Model_Composite(torch.nn.Module):
             )
 
 
+class Model_Composite_PL(torch.nn.Module):
+    def __init__(self, dim=32):
+        super().__init__()
+        self.dim = dim
+        self.PL = resnet34(
+            num_classes=self.dim * 3,
+            input_f=7,
+            sigmoid=True,
+        )  ## Background - composite
+
+        print("PLdim: %d" % (self.dim))
+        self.PL3D = LUT3D()
+
+    def forward(self, background, input_image, input_mask):
+        """
+        Args:
+            lut: LUT to be applied, a 5-d tensor. First dimension is batch.
+                For a pixel of value (R, G, B), it maps it to
+                R' = lut[:, 0, B, G, R],
+                G' = lut[:, 1, B, G, R],
+                B' = lut[:, 2, B, G, R].
+                The "BGR" order is because torch.grid_sample assumes guide_map of
+                shape D x H x W, but the coord in grid is (x, y, z) , which is
+                (R, G, B) in our case.
+            img: input images, of shape B x C x H x W, in range [0, 1]
+        Returns:
+            out: output images, of shape B x C x H x W
+        """
+        # On the device
+
+        input_all = torch.cat((input_image, background, input_mask), 1)
+        # input_all = torch.cat((input_image, background), 1)
+
+        pl_table = self.PL(input_all)[0]
+
+        b_dim = pl_table.shape[0]
+
+        brightness = pl_table[0, 0]
+        contrast = pl_table[0, 1]
+        saturation = pl_table[0, 2]
+
+        pl_table = torch.reshape(
+            pl_table,
+            (pl_table.shape[0], 3, self.dim),
+        )
+
+        pl_table = torch.cat(
+            (
+                pl_table[:, 0, None, None, :][:, None, ...].expand(
+                    b_dim, 1, self.dim, self.dim, self.dim
+                ),
+                pl_table[:, 1, None, :, None][:, None, ...].expand(
+                    b_dim, 1, self.dim, self.dim, self.dim
+                ),
+                pl_table[:, 2, :, None, None][:, None, ...].expand(
+                    b_dim, 1, self.dim, self.dim, self.dim
+                ),
+            ),
+            1,
+        )
+
+        pl_composite = (
+            self.PL3D(pl_table, input_image) * input_mask
+            + (1 - input_mask) * background
+        )
+
+        return (
+            pl_composite,
+            pl_composite,
+            [brightness, contrast, saturation],
+            pl_table,
+        )
+
+
 class Model_UNet(torch.nn.Module):
     def __init__(self, input=3, output=3):
         super().__init__()

@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from dataset import PIHData, PIHDataNGT, IhdDataset, PIHData_Composite
-from model import Model, Model_Composite, Model_UNet
+from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
 from tqdm import tqdm
 from torch import Tensor
 
@@ -91,6 +91,12 @@ def get_args():
         help="Dimension of the LUT.",
     )
 
+    parser.add_option(
+        "--piecewiselinear",
+        action="store_true",
+        help="If specified, will not piecewiselinear.",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -147,19 +153,24 @@ class Evaluater:
 
         self.data_length = len(self.dataset)
         if self.args.composite:
-            if self.args.unet:
-                self.model = Model_UNet(6)
-            else:
-                if self.args.lut:
-                    self.model = Model_Composite(
-                        feature_dim=self.args.features,
-                        LUT=True,
-                        LUTdim=self.args.lut_dim,
-                        curve=not self.args.nocurve,
-                    )
 
+            if self.args.piecewiselinear:
+                self.model = Model_Composite_PL(dim=32)
+
+            else:
+                if self.args.unet:
+                    self.model = Model_UNet(6)
                 else:
-                    self.model = Model_Composite(feature_dim=self.args.features)
+                    if self.args.lut:
+                        self.model = Model_Composite(
+                            feature_dim=self.args.features,
+                            LUT=True,
+                            LUTdim=self.args.lut_dim,
+                            curve=not self.args.nocurve,
+                        )
+
+                    else:
+                        self.model = Model_Composite(feature_dim=self.args.features)
         else:
             self.model = Model(feature_dim=self.args.features)
 
@@ -206,7 +217,7 @@ class Evaluater:
                 )
 
             brightness, contrast, saturation = par1
-            b_r, b_g, b_b = par2
+            b_r, b_g, b_b = par1
 
             # if not self.args.ngt:
 
