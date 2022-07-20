@@ -258,7 +258,13 @@ class GANLoss(nn.Module):
     that has the same size as the input.
     """
 
-    def __init__(self, gan_mode, gan_loss_mask=False, target_real_label=1.0, target_fake_label=0.0):
+    def __init__(
+        self,
+        gan_mode,
+        gan_loss_mask=False,
+        target_real_label=1.0,
+        target_fake_label=0.0,
+    ):
         """Initialize the GANLoss class.
         Parameters:
             gan_mode (str) - - the type of GAN objective. It currently supports vanilla, lsgan, and wgangp.
@@ -275,16 +281,13 @@ class GANLoss(nn.Module):
         if gan_mode == "lsgan":
             self.loss = nn.MSELoss()
         elif gan_mode == "vanilla":
-            if self.gan_loss_mask:
-                self.loss = nn.BCEWithLogitsLoss(reduction='none')
-            else:
-                self.loss = nn.BCEWithLogitsLoss()
+            self.loss = nn.BCEWithLogitsLoss()
         elif gan_mode in ["wgangp"]:
             self.loss = None
         else:
             raise NotImplementedError("gan mode %s not implemented" % gan_mode)
 
-    def get_target_tensor(self, prediction, target_is_real):
+    def get_target_tensor(self, prediction, target_is_real, mask=None):
         """Create label tensors with the same size as the input.
         Parameters:
             prediction (tensor) - - tpyically the prediction from a discriminator
@@ -295,11 +298,16 @@ class GANLoss(nn.Module):
 
         if target_is_real:
             target_tensor = self.real_label
-        else:
-            target_tensor = self.fake_label
-        return target_tensor.expand_as(prediction)
+            return target_tensor.expand_as(prediction)
 
-    def __call__(self, prediction, target_is_real,mask=None):
+        else:
+            if self.gan_loss_mask:
+                return 1 - mask
+            else:
+                target_tensor = self.fake_label
+                return target_tensor.expand_as(prediction)
+
+    def __call__(self, prediction, target_is_real, mask=None):
         """Calculate loss given Discriminator's output and grount truth labels.
         Parameters:
             prediction (tensor) - - tpyically the prediction output from a discriminator
@@ -308,11 +316,8 @@ class GANLoss(nn.Module):
             the calculated loss.
         """
         if self.gan_mode in ["lsgan", "vanilla"]:
-            target_tensor = self.get_target_tensor(prediction, target_is_real)
+            target_tensor = self.get_target_tensor(prediction, target_is_real, mask)
             loss = self.loss(prediction, target_tensor)
-            if self.gan_loss_mask:
-                # print(loss.shape)
-                loss = (loss*mask).mean()
         elif self.gan_mode == "wgangp":
             if target_is_real:
                 loss = -prediction.mean()

@@ -10,7 +10,7 @@ from dataset import PIHData, PIHDataNGT, IhdDataset, PIHData_Composite
 from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
 from tqdm import tqdm
 from torch import Tensor
-
+import matplotlib.pyplot as plt
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
@@ -120,9 +120,11 @@ class Evaluater:
         os.makedirs(self.tmp, exist_ok=True)
         os.makedirs(self.tmp + "/mask/", exist_ok=True)
         os.makedirs(self.tmp + "/original/", exist_ok=True)
-        os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
+        # os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
         os.makedirs(self.tmp + "/results/", exist_ok=True)
         os.makedirs(self.tmp + "/bg/", exist_ok=True)
+        if self.args.piecewiselinear:
+            os.makedirs(self.tmp + "/curves/", exist_ok=True)
 
         if not self.args.ngt:
             os.makedirs(self.tmp + "/real/", exist_ok=True)
@@ -187,7 +189,7 @@ class Evaluater:
 
     def evaluate(self):
         """Evaluate the model!"""
-
+        plt.ioff()
         self.model.eval()
 
         tqdm_bar = tqdm(enumerate(self.dataloader), "iteration")
@@ -204,21 +206,35 @@ class Evaluater:
             input_composite = input_composite.to(self.device)
 
             input_mask = input_mask.to(self.device)
-            if not self.args.ngt:
-                input_real = input_real.to(self.device)
 
-            if self.args.unet:
-                inter_composite, output_composite, par1, par2 = self.model(
-                    input_composite, input_mask, input_bg
-                )
-            else:
-                inter_composite, output_composite, par1, par2 = self.model(
-                    input_bg, input_composite, input_mask
-                )
+            with torch.no_grad():
+                if not self.args.ngt:
+                    input_real = input_real.to(self.device)
+
+                if self.args.unet:
+                    inter_composite, output_composite, par1, par2 = self.model(
+                        input_composite, input_mask, input_bg
+                    )
+                else:
+                    inter_composite, output_composite, par1, par2 = self.model(
+                        input_bg, input_composite, input_mask
+                    )
 
             brightness, contrast, saturation = par1
             b_r, b_g, b_b = par1
 
+            # if self.args.piecewiselinear:
+            #     curves = par2.cpu().detach().numpy()
+            #     red_curve = par2[0, 0, 0, 0, :]
+            #     green_curve = par2[0, 0, 0, :, 0]
+            #     blue_curve = par2[0, 0, :, 0, 0]
+
+            #     plt.plot(red_curve, "r")
+            #     plt.plot(green_curve, "g")
+            #     plt.plot(blue_curve, "b")
+
+            #     plt.savefig("books_read.png")
+            # print(curves.shape)
             # if not self.args.ngt:
 
             #     loss_second = self.criterion(output_composite, gt)
@@ -231,14 +247,32 @@ class Evaluater:
 
                 name_image = names[0].split("/")[-1]
 
+                if self.args.piecewiselinear:
+                    curves = par2.cpu().detach().numpy()
+
+                    red_curve = curves[0, 0, 0, 0, :]
+                    green_curve = curves[0, 1, 0, :, 0]
+                    blue_curve = curves[0, 2, :, 0, 0]
+
+                    plt.figure()
+                    plt.plot(red_curve, "r")
+                    plt.plot(green_curve, "g")
+                    plt.plot(blue_curve, "b")
+                    plt.ylim(0, 1)
+                    plt.legend(["Reg", "Green", "Blue"])
+                    plt.title("Learned Color Curves")
+
+                    plt.savefig(self.tmp + "/curves/%s" % (name_image))
+                    plt.close()
+
                 image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 image_all.save(self.tmp + "/results/%s" % (name_image))
 
                 image_mk = T.ToPILImage()(input_mask[kk, ...].cpu())
                 image_mk.save(self.tmp + "/mask/%s" % (name_image))
 
-                image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
-                image_i.save(self.tmp + "/intermediate/%s" % (name_image))
+                # image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
+                # image_i.save(self.tmp + "/intermediate/%s" % (name_image))
 
                 if not self.args.ngt:
                     image_gt = T.ToPILImage()(input_real[kk, ...].cpu())

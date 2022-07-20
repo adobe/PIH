@@ -305,7 +305,7 @@ class IhdDataset(Dataset):
 
 
 class DataCompositeGAN(Dataset):
-    def __init__(self, data_directory, ratio=1):
+    def __init__(self, data_directory, ratio=1, augment=False):
         """
 
         Parameters
@@ -324,6 +324,7 @@ class DataCompositeGAN(Dataset):
         )
         self.transforms = T.Compose([T.ToTensor()])
         self.transforms_mask = T.Compose([T.Grayscale(), T.ToTensor()])
+        self.augment = augment
 
     def __len__(self):
         return len(self.image_paths)
@@ -350,7 +351,7 @@ class DataCompositeGAN(Dataset):
         ### fore-ground image loading
 
         path_fg_image = path_fg.replace("masks/", "real_images/")
-        path_fg_image = path_fg_image.replace("_mask.png", ".jpg")
+        path_fg_image = path_fg_image.replace("_mask.png", ".png")
 
         path_fg_bg = path_fg.replace("masks/", "bg/")
 
@@ -363,13 +364,22 @@ class DataCompositeGAN(Dataset):
         ### back-ground image loading
 
         path_bg_image = path_bg.replace("masks/", "real_images/")
-        path_bg_image = path_bg_image.replace("_mask.png", ".jpg")
+        path_bg_image = path_bg_image.replace("_mask.png", ".png")
 
         path_bg_bg = path_bg.replace("masks/", "bg/")
 
         mask_bg = Image.open(path_bg)
 
         image_bg = Image.open(path_bg_image)
+
+        image_bg_augment = image_bg
+
+        if self.augment:
+            if "before" in path_bg_image:
+                path_bg_image_augment = path_bg_image.replace("before", "after")
+            elif "after" in path_bg_image:
+                path_bg_image_augment = path_bg_image.replace("after", "before")
+            image_bg_augment = Image.open(path_bg_image_augment)
 
         image_bg_bg = Image.open(path_bg_bg)
 
@@ -453,7 +463,21 @@ class DataCompositeGAN(Dataset):
             shear=0,
         )
 
+        image_bg_augment_shift = F.affine(
+            image_bg_augment,
+            angle=0,
+            translate=[
+                shift_bg_x,
+                shift_bg_y,
+            ],
+            scale=1,
+            shear=0,
+        )
+
         im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
+        im_real_augment = Image.composite(
+            image_bg_augment_shift, image_bg_bg, mask_bg_shift
+        )
 
         # Dataset output orders: 1. Background (inpainted) 2. Image Composite 3. Mask 4. Real Image
         return (
@@ -462,6 +486,7 @@ class DataCompositeGAN(Dataset):
             self.transforms_mask(mask_fg_aff_all),
             self.transforms(im_real),
             self.transforms_mask(mask_bg_shift),
+            self.transforms(im_real_augment),
             path_fg,
             path_bg,
         )

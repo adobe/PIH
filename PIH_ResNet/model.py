@@ -246,7 +246,7 @@ class Model_Composite(torch.nn.Module):
         if self.lut:
             self.lutnet = resnet34(
                 num_classes=3 * LUTdim * LUTdim * LUTdim,
-                input_f=13,
+                input_f=7,
                 sigmoid=True,
             )
             self.LUT3D = LUT3D()
@@ -255,16 +255,18 @@ class Model_Composite(torch.nn.Module):
 
         # On the device
 
-        input_all = torch.cat((input_image, background, input_mask), 1)
-        # input_all = torch.cat((input_image, background), 1)
+        # input_all = torch.cat((input_image, background, input_mask), 1)
+        # # input_all = torch.cat((input_image, background), 1)
 
-        embeddings = self.network(input_all)[0]
+        # embeddings = self.network(input_all)[0]
 
-        brightness = embeddings[0, 0]
-        contrast = embeddings[0, 1]
-        saturation = embeddings[0, 2]
+        # brightness = embeddings[0, 0]
+        # contrast = embeddings[0, 1]
+        # saturation = embeddings[0, 2]
 
-        input_composite = self.CT1(input_image, embeddings, input_mask)
+        # input_composite = self.CT1(input_image, embeddings, input_mask)
+
+        input_composite = input_image.clone()
 
         if self.curve:
             inputs_color = torch.cat(
@@ -294,8 +296,6 @@ class Model_Composite(torch.nn.Module):
                 (
                     input_image,
                     background,
-                    input_composite,
-                    output_composite,
                     input_mask,
                 ),
                 1,
@@ -321,7 +321,7 @@ class Model_Composite(torch.nn.Module):
             return (
                 input_composite,
                 lut_composite,
-                [brightness, contrast, saturation],
+                [b_r, b_g, b_b],
                 [b_r, b_g, b_b],
             )
 
@@ -329,19 +329,19 @@ class Model_Composite(torch.nn.Module):
             return (
                 input_composite,
                 output_composite,
-                [brightness, contrast, saturation],
+                [b_r, b_g, b_b],
                 [b_r, b_g, b_b],
             )
 
 
 class Model_Composite_PL(torch.nn.Module):
-    def __init__(self, dim=32):
+    def __init__(self, dim=32, sigmoid=True):
         super().__init__()
         self.dim = dim
         self.PL = resnet34(
             num_classes=self.dim * 3,
             input_f=7,
-            sigmoid=True,
+            sigmoid=sigmoid,
         )  ## Background - composite
 
         print("PLdim: %d" % (self.dim))

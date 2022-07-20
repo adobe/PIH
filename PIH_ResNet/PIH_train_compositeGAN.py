@@ -182,6 +182,29 @@ def get_args():
     )
 
     parser.add_option(
+        "--pairaugment",
+        action="store_true",
+        help="If specified, will use paired augmentation.",
+    )
+    parser.add_option(
+        "--purepairaugment",
+        action="store_true",
+        help="If specified, will use paired augmentation.",
+    )
+
+    parser.add_option(
+        "--lowdim",
+        action="store_true",
+        help="If specified, will use low dim dis.",
+    )
+
+    parser.add_option(
+        "--nosigmoid",
+        action="store_true",
+        help="If specified, will not use sigmoid.",
+    )
+
+    parser.add_option(
         "--inputdimD",
         default=3,
         type="int",
@@ -223,7 +246,9 @@ class Trainer:
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
-        self.dataset = DataCompositeGAN(self.args.datadir, self.args.trainingratio)
+        self.dataset = DataCompositeGAN(
+            self.args.datadir, self.args.trainingratio, augment=self.args.pairaugment
+        )
 
         self.dataloader = DataLoader(
             self.dataset,
@@ -240,7 +265,9 @@ class Trainer:
             self.model = Model_UNet(input=self.args.inputdim)
         else:
             if self.args.piecewiselinear:
-                self.model = Model_Composite_PL(dim=32)
+                self.model = Model_Composite_PL(
+                    dim=32, sigmoid=(not self.args.nosigmoid)
+                )
             else:
                 if self.args.lut:
                     self.model = Model_Composite(
@@ -259,11 +286,19 @@ class Trainer:
             if self.args.unetd:
                 print("Input dim for discriminator: %d" % (self.args.inputdimD))
                 if self.args.unetdnoskip:
+                    print("No Skip connection!")
                     self.model_D = UNetDiscriminatorSN(
-                        input_dim=self.args.inputdimD, skip_connection=False
+                        input_dim=self.args.inputdimD,
+                        skip_connection=False,
+                        Low_dim=self.args.lowdim,
                     )
                 else:
-                    self.model_D = UNetDiscriminatorSN(input_dim=self.args.inputdimD)
+                    print("With Skip connection!")
+
+                    self.model_D = UNetDiscriminatorSN(
+                        input_dim=self.args.inputdimD,
+                        Low_dim=self.args.lowdim,
+                    )
             else:
                 self.model_D = networks.define_D(3, 64, "n_layers", 3)
 
@@ -281,6 +316,10 @@ class Trainer:
         self.criterion_GAN = networks.GANLoss(
             "vanilla", gan_loss_mask=self.args.ganlossmask
         ).to(self.device)
+        if self.args.ganlossmask:
+            print("Using GAN Loss Mask")
+        else:
+            print("Not using GAN Loss Mask")
 
         # if self.args.reconloss:
         self.reconloss = torch.nn.L1Loss()
@@ -374,6 +413,7 @@ class Trainer:
                 mask,
                 im_real,
                 mask_bg,
+                im_real_augment,
                 fname,
                 bname,
             ) in tqdm_bar:
@@ -382,6 +422,8 @@ class Trainer:
                 im_composite = im_composite.to(self.device)
                 mask = mask.to(self.device)
                 im_real = im_real.to(self.device)
+                im_real_augment = im_real_augment.to(self.device)
+
                 mask_bg = mask_bg.to(self.device)
 
                 if np.random.rand() < self.args.reconratio or epoch <= self.args.warmup:
@@ -398,6 +440,10 @@ class Trainer:
                             image_bg_bg, im_real, mask_bg
                         )
 
+                        _, output_composite_aug, par1_aug, par2_aug = self.model(
+                            image_bg_bg, im_real_augment, mask_bg
+                        )
+
                     brightness, contrast, saturation = par1
 
                     for param in self.model_D.parameters():
@@ -405,7 +451,15 @@ class Trainer:
 
                     self.optimizer.zero_grad()
 
-                    loss_l1 = self.reconloss(output_composite, im_real)
+                    if self.args.purepairaugment:
+                        loss_l1 = 0 * self.reconloss(
+                            output_composite, im_real
+                        ) + self.reconloss(output_composite_aug, im_real)
+                    else:
+                        loss_l1 = 1 * self.reconloss(
+                            output_composite, im_real
+                        ) + self.reconloss(output_composite_aug, im_real)
+
                     loss_l1.backward()
 
                     self.optimizer.step()
@@ -429,6 +483,16 @@ class Trainer:
                                 + bname[kk].split("/")[-1].split(".")[0]
                             )
                             name = "%d_%d" % (index, kk)
+
+                            image_aug = T.ToPILImage()(
+                                output_composite_aug[kk, ...].cpu().clamp(0, 1)
+                            )
+
+                            image_aug.save(
+                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug.jpg"
+                                % (self.args.tempdir, name)
+                            )
+
                             image_all = T.ToPILImage()(
                                 output_composite[kk, ...].cpu().clamp(0, 1)
                             )
@@ -438,19 +502,19 @@ class Trainer:
                                 % (self.args.tempdir, name)
                             )
 
-                            image_i = T.ToPILImage()(
-                                input_composite[kk, ...].cpu().clamp(0, 1)
-                            )
-                            image_i.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_inter_L1.jpg"
-                                % (self.args.tempdir, name)
-                            )
-
                             image_real = T.ToPILImage()(
                                 im_real[kk, ...].cpu().clamp(0, 1)
                             )
                             image_real.save(
                                 "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_L1.jpg"
+                                % (self.args.tempdir, name)
+                            )
+
+                            image_real_aug = T.ToPILImage()(
+                                im_real_augment[kk, ...].cpu().clamp(0, 1)
+                            )
+                            image_real_aug.save(
+                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_aug_L1.jpg"
                                 % (self.args.tempdir, name)
                             )
 
