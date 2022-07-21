@@ -16,7 +16,7 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN.py --datadir /home/kewang/s
                                            --composite \
                                            --lut \
                                            --lut-dim 16 \
-                                           --num-testing 500 \
+                                           --num-testing 2000 \
                                            --nocurve \
                                            --piecewiselinear \
 

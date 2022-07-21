@@ -4,7 +4,7 @@
 device=6
 lr=1e-5
 lrd=1e-5
-batch_size=12
+batch_size=8
 date=20220719_a100_6_unetD_3_no_skip_resnet_maskinput_pl32_l105_gan_loss_mask_lowdim
 reconweight=None
 training_ratio=1

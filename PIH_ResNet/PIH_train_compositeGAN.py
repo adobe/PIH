@@ -722,7 +722,7 @@ class Trainer:
             # print(f"\n\n\tEpoch {epoch}. Loss {loss.item()}\n brightness {brightness} contrast {contrast} saturation {saturation} hue {hue}")
             # np.save(os.path.join(self.args.logdir, "loss_all.npy"), np.array(losses))
 
-            if epoch % 2 == 0:
+            if epoch % 1 == 0:
                 self.save_model(epoch)
 
 
