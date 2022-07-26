@@ -9,9 +9,18 @@ import h5py
 
 
 def dir2dic(dir_list):
+    """_summary_
+
+    Args:
+        dir_list (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     n = len(dir_list)
     output = list([])
     for i in range(n):
+
         dir_n = dir_list[i]
         dk = list([dir_n])
         dk.extend(dir_n[:-3].split("_"))

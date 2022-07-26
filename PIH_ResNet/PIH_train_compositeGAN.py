@@ -113,12 +113,12 @@ def get_args():
         help="If specified, training will use reconloss on the mask.",
     )
 
-    parser.add_option(
-        "--reconweight",
-        default=1,
-        type="float",
-        help="Recon weight",
-    )
+    # parser.add_option(
+    #     "--reconweight",
+    #     default=1,
+    #     type="float",
+    #     help="Recon weight",
+    # )
     parser.add_option(
         "--inputdim",
         default=3,
@@ -230,6 +230,20 @@ def get_args():
         type="float",
         help="Ratio for self reconstruction. (e.g., 0.1 indicates using 10 percent of the data for self reconsruction)",
     )
+
+    parser.add_option(
+        "--reconweight",
+        default=1,
+        type="float",
+        help="wight for self reconstruction.",
+    )
+
+    parser.add_option(
+        "--reconwithgan",
+        action="store_true",
+        help="If specified, will add adversarial loss for the recon training.",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -321,6 +335,14 @@ class Trainer:
         else:
             print("Not using GAN Loss Mask")
 
+        if self.args.reconwithgan:
+            print(
+                "Using l1+gan for pair recon! l1 weight = %f" % (self.args.reconweight)
+            )
+        else:
+            print("Using gan for pair recon!")
+        print("recon ratio: %f" % (self.args.reconratio))
+
         # if self.args.reconloss:
         self.reconloss = torch.nn.L1Loss()
 
@@ -402,6 +424,12 @@ class Trainer:
 
         # tqdm_bar = tqdm(range(self.start_epoch, self.args.epochs + 1), "Epoch")
         #         sys.exit()
+        losses_l1_all = []
+        losses_G_all = []
+        losses_D_all = []
+        losses_G_all_com = []
+        losses_D_all_com = []
+
         for epoch in range(self.start_epoch, self.args.epochs + 1):
 
             self.model.train()
@@ -444,87 +472,297 @@ class Trainer:
                             image_bg_bg, im_real_augment, mask_bg
                         )
 
-                    brightness, contrast, saturation = par1
+                    if self.args.reconwithgan:
 
-                    for param in self.model_D.parameters():
-                        param.requires_grad = False
+                        ## Update D
 
-                    self.optimizer.zero_grad()
+                        if index % self.args.frequency == 0:
 
-                    if self.args.purepairaugment:
-                        loss_l1 = 0 * self.reconloss(
-                            output_composite, im_real
-                        ) + self.reconloss(output_composite_aug, im_real)
-                    else:
-                        loss_l1 = 1 * self.reconloss(
-                            output_composite, im_real
-                        ) + self.reconloss(output_composite_aug, im_real)
+                            for param in self.model_D.parameters():
+                                param.requires_grad = True
 
-                    loss_l1.backward()
+                            self.optimizer_D.zero_grad()
 
-                    self.optimizer.step()
+                            if self.args.inputdimD == 3:
+                                # fake_AB = torch.cat((mask, output_composite), 1)
 
-                    tqdm_bar.set_description(
-                        "E: {}. L_1: {:3f}".format(
-                            epoch,
-                            loss_l1.item(),
+                                fake_AB = output_composite_aug.clone()
+                            elif self.args.inputdimD == 4:
+                                fake_AB = torch.cat((mask_bg, output_composite_aug), 1)
+
+                            elif self.args.inputdimD == 6:
+                                fake_AB = torch.cat(
+                                    (image_bg_bg, output_composite_aug), 1
+                                )
+
+                            elif self.args.inputdimD == 7:
+                                fake_AB = torch.cat(
+                                    (image_bg_bg, mask_bg, output_composite_aug), 1
+                                )
+
+                            else:
+                                print(
+                                    "Using a wrong input dimension for discriminator, supporting 3, 6, 7"
+                                )
+                            pred_fake = self.model_D(fake_AB.detach())
+                            # print(pred_fake.shape)
+                            if self.args.ganlossmask:
+                                loss_D_fake = self.criterion_GAN(
+                                    pred_fake, False, mask=mask_bg
+                                )
+                            else:
+                                loss_D_fake = self.criterion_GAN(pred_fake, False)
+
+                            # real_AB = torch.cat((mask_bg, im_real), 1)
+                            if self.args.inputdimD == 3:
+
+                                real_AB = im_real.clone()
+
+                            elif self.args.inputdimD == 4:
+                                real_AB = torch.cat((mask_bg, im_real), 1)
+
+                            elif self.args.inputdimD == 6:
+                                real_AB = torch.cat((image_bg_bg, im_real), 1)
+
+                            elif self.args.inputdimD == 7:
+
+                                real_AB = torch.cat((image_bg_bg, mask_bg, im_real), 1)
+
+                            pred_real = self.model_D(real_AB)
+
+                            # print("Real_label mean: %f  Fake label mean: %f"%(pred_real.mean(),pred_fake.mean()))
+                            if self.args.ganlossmask:
+                                loss_D_real = self.criterion_GAN(
+                                    pred_real, True, mask=mask
+                                )
+                            else:
+                                loss_D_real = self.criterion_GAN(pred_real, True)
+
+                            loss_D = 0.5 * (loss_D_fake + loss_D_real)
+
+                            loss_D.backward()
+
+                            self.optimizer_D.step()
+
+                            losses_D_all.append(loss_D.item())
+                        ## Update G
+
+                        for param in self.model_D.parameters():
+                            param.requires_grad = False
+
+                        self.optimizer.zero_grad()
+
+                        if self.args.inputdimD == 3:
+                            # fake_AB = torch.cat((mask, output_composite), 1)
+
+                            fake_AB = output_composite_aug.clone()
+                        elif self.args.inputdimD == 4:
+                            fake_AB = torch.cat((mask_bg, output_composite_aug), 1)
+
+                        elif self.args.inputdimD == 6:
+                            fake_AB = torch.cat((image_bg_bg, output_composite_aug), 1)
+
+                        elif self.args.inputdimD == 7:
+                            fake_AB = torch.cat(
+                                (image_bg_bg, mask_bg, output_composite_aug), 1
+                            )
+
+                        else:
+                            print(
+                                "Using a wrong input dimension for discriminator, supporting 3, 6, 7"
+                            )
+
+                        pred_fake = self.model_D(fake_AB)
+                        if self.args.ganlossmask:
+
+                            loss_G_adv = self.criterion_GAN(pred_fake, True, mask=mask)
+                        else:
+                            loss_G_adv = self.criterion_GAN(pred_fake, True)
+
+                        if self.args.purepairaugment:
+                            loss_l1 = 0 * self.reconloss(
+                                output_composite, im_real
+                            ) + self.reconloss(output_composite_aug, im_real)
+                        else:
+                            loss_l1 = 1 * self.reconloss(
+                                output_composite, im_real
+                            ) + self.reconloss(output_composite_aug, im_real)
+
+                        loss_G_all = loss_G_adv + self.args.reconweight * loss_l1
+
+                        loss_G_all.backward()
+
+                        self.optimizer.step()
+
+                        tqdm_bar.set_description(
+                            "E: {}. L_1: {:3f} L_1_raw: {:3f} L_G: {:3f} L_D: {:3f} L_all: {:3f}".format(
+                                epoch,
+                                self.args.reconweight * loss_l1.item(),
+                                1 * loss_l1.item(),
+                                loss_G_adv.item(),
+                                loss_D.item(),
+                                loss_G_all.item(),
+                            )
                         )
-                    )
-                    if epoch % 1 == 0 and index < 20:
-                        # self.save_model(epoch)
 
-                        for kk in range(self.args.batchsize):
-                            # print("Red: ", par2[kk, 0, 0, 0, :])
-                            # print("Red: ", par2[kk, 0, 3, 4, :])
+                        losses_G_all.append(loss_G_adv.item())
+                        losses_l1_all.append(self.args.reconweight * loss_l1.item())
 
-                            name = (
-                                fname[kk].split("/")[-1].split(".")[0]
-                                + "_"
-                                + bname[kk].split("/")[-1].split(".")[0]
-                            )
-                            name = "%d_%d" % (index, kk)
+                        if epoch % 1 == 0 and index < 20:
+                            # self.save_model(epoch)
 
-                            image_aug = T.ToPILImage()(
-                                output_composite_aug[kk, ...].cpu().clamp(0, 1)
-                            )
+                            for kk in range(self.args.batchsize):
+                                # print("Red: ", par2[kk, 0, 0, 0, :])
+                                # print("Red: ", par2[kk, 0, 3, 4, :])
 
-                            image_aug.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug.jpg"
-                                % (self.args.tempdir, name)
-                            )
+                                name = (
+                                    fname[kk].split("/")[-1].split(".")[0]
+                                    + "_"
+                                    + bname[kk].split("/")[-1].split(".")[0]
+                                )
+                                name = "%d_%d" % (index, kk)
 
-                            image_all = T.ToPILImage()(
-                                output_composite[kk, ...].cpu().clamp(0, 1)
-                            )
+                                image_aug = T.ToPILImage()(
+                                    output_composite_aug[kk, ...].cpu().clamp(0, 1)
+                                )
 
-                            image_all.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1.jpg"
-                                % (self.args.tempdir, name)
-                            )
+                                image_aug.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug.jpg"
+                                    % (self.args.tempdir, name)
+                                )
 
-                            image_real = T.ToPILImage()(
-                                im_real[kk, ...].cpu().clamp(0, 1)
-                            )
-                            image_real.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_L1.jpg"
-                                % (self.args.tempdir, name)
-                            )
+                                image_all = T.ToPILImage()(
+                                    output_composite[kk, ...].cpu().clamp(0, 1)
+                                )
 
-                            image_real_aug = T.ToPILImage()(
-                                im_real_augment[kk, ...].cpu().clamp(0, 1)
-                            )
-                            image_real_aug.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_aug_L1.jpg"
-                                % (self.args.tempdir, name)
-                            )
+                                image_all.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
 
-                            image_og = T.ToPILImage()(
-                                im_real[kk, ...].cpu().clamp(0, 1)
+                                image_real = T.ToPILImage()(
+                                    im_real[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_real.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_real_aug = T.ToPILImage()(
+                                    im_real_augment[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_real_aug.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_aug_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_og = T.ToPILImage()(
+                                    im_real[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_og.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_composite_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_dis = T.ToPILImage()(
+                                    pred_fake[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_dis.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_dis_score_fake_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_dis_true = T.ToPILImage()(
+                                    pred_real[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_dis_true.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_dis_score_real_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                    else:
+
+                        for param in self.model_D.parameters():
+                            param.requires_grad = False
+
+                        self.optimizer.zero_grad()
+
+                        if self.args.purepairaugment:
+                            loss_l1 = 0 * self.reconloss(
+                                output_composite, im_real
+                            ) + self.reconloss(output_composite_aug, im_real)
+                        else:
+                            loss_l1 = 1 * self.reconloss(
+                                output_composite, im_real
+                            ) + self.reconloss(output_composite_aug, im_real)
+
+                        loss_all = self.args.reconweight * loss_l1
+                        loss_all.backward()
+
+                        self.optimizer.step()
+
+                        tqdm_bar.set_description(
+                            "E: {}. L_1: {:3f}".format(
+                                epoch,
+                                self.args.reconweight * loss_l1.item(),
                             )
-                            image_og.save(
-                                "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_composite_L1.jpg"
-                                % (self.args.tempdir, name)
-                            )
+                        )
+                        losses_l1_all.append(self.args.reconweight * loss_l1)
+                        if epoch % 1 == 0 and index < 20:
+                            # self.save_model(epoch)
+
+                            for kk in range(self.args.batchsize):
+                                # print("Red: ", par2[kk, 0, 0, 0, :])
+                                # print("Red: ", par2[kk, 0, 3, 4, :])
+
+                                name = (
+                                    fname[kk].split("/")[-1].split(".")[0]
+                                    + "_"
+                                    + bname[kk].split("/")[-1].split(".")[0]
+                                )
+                                name = "%d_%d" % (index, kk)
+
+                                image_aug = T.ToPILImage()(
+                                    output_composite_aug[kk, ...].cpu().clamp(0, 1)
+                                )
+
+                                image_aug.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_all = T.ToPILImage()(
+                                    output_composite[kk, ...].cpu().clamp(0, 1)
+                                )
+
+                                image_all.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_real = T.ToPILImage()(
+                                    im_real[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_real.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_real_aug = T.ToPILImage()(
+                                    im_real_augment[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_real_aug.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_real_aug_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_og = T.ToPILImage()(
+                                    im_real[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_og.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_composite_L1.jpg"
+                                    % (self.args.tempdir, name)
+                                )
                 else:
 
                     if self.args.unet:
@@ -607,6 +845,8 @@ class Trainer:
 
                         self.optimizer_D.step()
 
+                        losses_D_all_com.append(loss_D.item())
+
                     ## Update G
 
                     for param in self.model_D.parameters():
@@ -639,16 +879,11 @@ class Trainer:
                     else:
                         loss_G_adv = self.criterion_GAN(pred_fake, True)
 
-                    if self.args.reconloss:
-                        # print("New")
-                        # print(self.args.reconweight*self.reconloss(input_composite*(1-mask), output_composite*(1-mask)).item())
-                        loss_G_adv += self.args.reconweight * self.reconloss(
-                            im_composite * (1 - mask), output_composite * (1 - mask)
-                        )
-
                     loss_G_adv.backward()
 
                     self.optimizer.step()
+
+                    losses_D_all_com.append(loss_G_adv.item())
 
                     tqdm_bar.set_description(
                         "E: {}. L_G: {:3f} L_D: {:3f}".format(
@@ -724,6 +959,37 @@ class Trainer:
 
             if epoch % 1 == 0:
                 self.save_model(epoch)
+
+                np.save(
+                    os.path.join(
+                        self.checkpoint_directory, "loss_l1_{}.pth".format(epoch)
+                    ),
+                    np.array(losses_l1_all),
+                )
+                np.save(
+                    os.path.join(
+                        self.checkpoint_directory, "loss_G_{}.pth".format(epoch)
+                    ),
+                    np.array(losses_G_all),
+                )
+                np.save(
+                    os.path.join(
+                        self.checkpoint_directory, "loss_D_{}.pth".format(epoch)
+                    ),
+                    np.array(losses_D_all),
+                )
+                np.save(
+                    os.path.join(
+                        self.checkpoint_directory, "loss_Gcom_{}.pth".format(epoch)
+                    ),
+                    np.array(losses_G_all_com),
+                )
+                np.save(
+                    os.path.join(
+                        self.checkpoint_directory, "loss_Dcom_{}.pth".format(epoch)
+                    ),
+                    np.array(losses_D_all_com),
+                )
 
 
 if __name__ == "__main__":
