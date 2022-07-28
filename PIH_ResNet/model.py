@@ -335,17 +335,34 @@ class Model_Composite(torch.nn.Module):
 
 
 class Model_Composite_PL(torch.nn.Module):
-    def __init__(self, dim=32, sigmoid=True):
+    def __init__(self, dim=32, sigmoid=True, scaling=False):
         super().__init__()
         self.dim = dim
-        self.PL = resnet34(
-            num_classes=self.dim * 3,
-            input_f=7,
-            sigmoid=sigmoid,
-        )  ## Background - composite
+        self.scaling = scaling
+        if scaling:
+            self.PL = resnet34(
+                num_classes=self.dim * 3,
+                input_f=8,
+                sigmoid=sigmoid,
+            )  ## Background - composite
+        else:
+            self.PL = resnet34(
+                num_classes=self.dim * 3,
+                input_f=7,
+                sigmoid=sigmoid,
+            )  ## Background - composite
 
         print("PLdim: %d" % (self.dim))
         self.PL3D = LUT3D()
+
+    def setscalor(self, scalor):
+        """Using augmented recon weight
+
+        Args:
+            scalor (numpy float): generated scalor, from 0 to 5
+        """
+
+        self.scalor = scalor
 
     def forward(self, background, input_image, input_mask):
         """
@@ -363,8 +380,13 @@ class Model_Composite_PL(torch.nn.Module):
             out: output images, of shape B x C x H x W
         """
         # On the device
-
-        input_all = torch.cat((input_image, background, input_mask), 1)
+        if self.scaling:
+            tensor_scalor = torch.ones_like(input_mask) * self.scalor
+            input_all = torch.cat(
+                (input_image, background, input_mask, tensor_scalor), 1
+            )
+        else:
+            input_all = torch.cat((input_image, background, input_mask), 1)
         # input_all = torch.cat((input_image, background), 1)
 
         pl_table = self.PL(input_all)[0]

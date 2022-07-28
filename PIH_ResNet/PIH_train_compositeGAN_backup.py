@@ -12,7 +12,7 @@ from tqdm import tqdm
 from torch import Tensor
 import networks
 from unet_dis import UNetDiscriminatorSN
-import random
+
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
 
@@ -244,19 +244,6 @@ def get_args():
         help="If specified, will add adversarial loss for the recon training.",
     )
 
-    parser.add_option(
-        "--augreconweight",
-        action="store_true",
-        help="If specified, will add augmentation on the recon weight.",
-    )
-
-    parser.add_option(
-        "--losstype",
-        default=0,
-        type="int",
-        help="Loss function type, with the argument augreconweight. 0: lambda*gan 1:lamda*gan+(1-lambda)*l1, scale dis 2:lamda*gan + (1-lamda)*l1, not scale dis",
-    )
-
     (options, args) = parser.parse_args()
     return options
 
@@ -293,9 +280,7 @@ class Trainer:
         else:
             if self.args.piecewiselinear:
                 self.model = Model_Composite_PL(
-                    dim=32,
-                    sigmoid=(not self.args.nosigmoid),
-                    scaling=self.args.augreconweight,
+                    dim=32, sigmoid=(not self.args.nosigmoid)
                 )
             else:
                 if self.args.lut:
@@ -358,11 +343,6 @@ class Trainer:
             print("Using gan for pair recon!")
         print("recon ratio: %f" % (self.args.reconratio))
 
-        if self.args.augreconweight:
-            print(
-                "Using augmented recon weight, reconweight*ganloss + L1 loss, ranging from 0 - 1"
-            )
-            print("Using loss type:%d" % (self.args.losstype))
         # if self.args.reconloss:
         self.reconloss = torch.nn.L1Loss()
 
@@ -484,9 +464,6 @@ class Trainer:
                         # print(output_composite.max())
                     else:
 
-                        if self.args.augreconweight:
-                            self.model.setscalor(random.uniform(0, 1))
-
                         input_composite, output_composite, par1, par2 = self.model(
                             image_bg_bg, im_real, mask_bg
                         )
@@ -563,14 +540,6 @@ class Trainer:
 
                             loss_D = 0.5 * (loss_D_fake + loss_D_real)
 
-                            if self.args.augreconweight:
-                                if self.args.losstype == 0:
-                                    loss_D = loss_D * self.model.scalor
-                                if self.args.losstype == 1:
-                                    loss_D = loss_D * self.model.scalor
-                                if self.args.losstype == 2:
-                                    pass
-
                             loss_D.backward()
 
                             self.optimizer_D.step()
@@ -619,61 +588,25 @@ class Trainer:
                                 output_composite, im_real
                             ) + self.reconloss(output_composite_aug, im_real)
 
-                        if self.args.augreconweight:
-                            if self.args.losstype == 0:
-                                # print("love 000")
-                                loss_G_all = self.model.scalor * loss_G_adv + loss_l1
-                            if self.args.losstype == 1:
-                                # print("love 001")
-
-                                loss_G_all = (
-                                    self.model.scalor * loss_G_adv
-                                    + (1 - self.model.scalor) * loss_l1
-                                )
-                            if self.args.losstype == 2:
-                                # print("love 002")
-
-                                loss_G_all = (
-                                    self.model.scalor * loss_G_adv
-                                    + (1 - self.model.scalor) * loss_l1
-                                )
-
-                        else:
-                            loss_G_all = loss_G_adv + self.args.reconweight * loss_l1
+                        loss_G_all = loss_G_adv + self.args.reconweight * loss_l1
 
                         loss_G_all.backward()
 
                         self.optimizer.step()
 
-                        if self.args.augreconweight:
-                            tqdm_bar.set_description(
-                                "E: {}. L_1: {:3f} L_1_raw: {:3f} L_G: {:3f} L_D: {:3f} L_all: {:3f} Scalor: {:3f}".format(
-                                    epoch,
-                                    loss_l1.item() / self.model.scalor,
-                                    1 * loss_l1.item(),
-                                    self.model.scalor * loss_G_adv.item(),
-                                    loss_D.item(),
-                                    loss_G_all.item(),
-                                    self.model.scalor,
-                                )
+                        tqdm_bar.set_description(
+                            "E: {}. L_1: {:3f} L_1_raw: {:3f} L_G: {:3f} L_D: {:3f} L_all: {:3f}".format(
+                                epoch,
+                                self.args.reconweight * loss_l1.item(),
+                                1 * loss_l1.item(),
+                                loss_G_adv.item(),
+                                loss_D.item(),
+                                loss_G_all.item(),
                             )
-                        else:
-                            tqdm_bar.set_description(
-                                "E: {}. L_1: {:3f} L_1_raw: {:3f} L_G: {:3f} L_D: {:3f} L_all: {:3f}".format(
-                                    epoch,
-                                    self.args.reconweight * loss_l1.item(),
-                                    1 * loss_l1.item(),
-                                    loss_G_adv.item(),
-                                    loss_D.item(),
-                                    loss_G_all.item(),
-                                )
-                            )
+                        )
 
                         losses_G_all.append(loss_G_adv.item())
-                        if self.args.augreconweight:
-                            losses_l1_all.append(loss_l1.item())
-                        else:
-                            losses_l1_all.append(self.args.reconweight * loss_l1.item())
+                        losses_l1_all.append(self.args.reconweight * loss_l1.item())
 
                         if epoch % 1 == 0 and index < 20:
                             # self.save_model(epoch)
@@ -840,9 +773,6 @@ class Trainer:
                         # print(output_composite.max())
                     else:
 
-                        if self.args.augreconweight:
-                            self.model.setscalor(random.uniform(0, 1))
-
                         input_composite, output_composite, par1, par2 = self.model(
                             image_bg_bg, im_composite, mask
                         )
@@ -910,13 +840,6 @@ class Trainer:
                             loss_D_real = self.criterion_GAN(pred_real, True)
 
                         loss_D = 0.5 * (loss_D_fake + loss_D_real)
-                        if self.args.augreconweight:
-                            if self.args.losstype == 0:
-                                loss_D = self.model.scalor * loss_D
-                            if self.args.losstype == 1:
-                                loss_D = self.model.scalor * loss_D
-                            if self.args.losstype == 2:
-                                pass
 
                         loss_D.backward()
 
@@ -956,14 +879,6 @@ class Trainer:
                     else:
                         loss_G_adv = self.criterion_GAN(pred_fake, True)
 
-                    if self.args.augreconweight:
-                        if self.args.losstype == 0:
-                            loss_G_adv = self.model.scalor * loss_G_adv
-                        if self.args.losstype == 1:
-                            loss_G_adv = self.model.scalor * loss_G_adv
-                        else:
-                            pass
-
                     loss_G_adv.backward()
 
                     self.optimizer.step()
@@ -971,11 +886,10 @@ class Trainer:
                     losses_D_all_com.append(loss_G_adv.item())
 
                     tqdm_bar.set_description(
-                        "E: {}. L_G: {:3f} L_D: {:3f} Scalor: {:3f} ".format(
+                        "E: {}. L_G: {:3f} L_D: {:3f}".format(
                             epoch,
                             loss_G_adv.item(),
                             loss_D.item(),
-                            self.model.scalor,
                         )
                     )
                     if epoch % 1 == 0 and index < 20:
