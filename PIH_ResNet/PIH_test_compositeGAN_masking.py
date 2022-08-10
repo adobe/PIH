@@ -97,6 +97,46 @@ def get_args():
         help="If specified, will not piecewiselinear.",
     )
 
+    parser.add_option(
+        "--masking",
+        action="store_true",
+        help="If specified, will using masking.",
+    )
+
+    parser.add_option(
+        "--brush",
+        action="store_true",
+        help="If specified, will using brush.",
+    )
+    parser.add_option(
+        "--nosig",
+        action="store_true",
+        help="If specified, will using nosig.",
+    )
+    parser.add_option(
+        "--onlyupsample",
+        action="store_true",
+        help="If specified, will only use upsampling.",
+    )
+    parser.add_option(
+        "--maskconvkernel",
+        default=1,
+        type="int",
+        help="maskconvkernel.",
+    )
+
+    parser.add_option(
+        "--maskoffset",
+        default=0.5,
+        type="float",
+        help="maskoffset.",
+    )
+    parser.add_option(
+        "--swap",
+        action="store_true",
+        help="If specified, will only use upsampling.",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -120,9 +160,12 @@ class Evaluater:
         os.makedirs(self.tmp, exist_ok=True)
         os.makedirs(self.tmp + "/mask/", exist_ok=True)
         os.makedirs(self.tmp + "/original/", exist_ok=True)
-        # os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
+        os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
         os.makedirs(self.tmp + "/results/", exist_ok=True)
         os.makedirs(self.tmp + "/bg/", exist_ok=True)
+        if self.args.masking:
+            os.makedirs(self.tmp + "/gainmap/", exist_ok=True)
+
         if self.args.piecewiselinear:
             os.makedirs(self.tmp + "/curves/", exist_ok=True)
 
@@ -157,7 +200,19 @@ class Evaluater:
         if self.args.composite:
 
             if self.args.piecewiselinear:
-                self.model = Model_Composite_PL(dim=32, lut=self.args.lut)
+                self.model = Model_Composite_PL(
+                    dim=32,
+                    sigmoid=True,
+                    scaling=False,
+                    masking=self.args.masking,
+                    brush=self.args.brush,
+                    nosig=self.args.nosig,
+                    onlyupsample=self.args.onlyupsample,
+                    maskoffset=self.args.maskoffset,
+                    maskconvkernel=self.args.maskconvkernel,
+                    swap=self.args.swap,
+                    lut=self.args.lut,
+                )
 
             else:
                 if self.args.unet:
@@ -271,8 +326,8 @@ class Evaluater:
                 image_mk = T.ToPILImage()(input_mask[kk, ...].cpu())
                 image_mk.save(self.tmp + "/mask/%s" % (name_image))
 
-                # image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
-                # image_i.save(self.tmp + "/intermediate/%s" % (name_image))
+                image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
+                image_i.save(self.tmp + "/intermediate/%s" % (name_image))
 
                 if not self.args.ngt:
                     image_gt = T.ToPILImage()(input_real[kk, ...].cpu())
@@ -283,6 +338,13 @@ class Evaluater:
 
                 image_bg = T.ToPILImage()(input_bg[kk, ...].cpu())
                 image_bg.save(self.tmp + "/bg/%s" % (name_image))
+
+                if self.args.masking:
+                    image_gainmap = T.ToPILImage()(
+                        self.model.output_final[kk, ...].cpu()
+                        * input_mask[kk, ...].cpu()
+                    )
+                    image_gainmap.save(self.tmp + "/gainmap/%s" % (name_image))
 
                 # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 # image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))

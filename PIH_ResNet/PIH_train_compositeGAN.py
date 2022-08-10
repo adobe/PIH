@@ -257,6 +257,54 @@ def get_args():
         help="Loss function type, with the argument augreconweight. 0: lambda*gan 1:lamda*gan+(1-lambda)*l1, scale dis 2:lamda*gan + (1-lamda)*l1, not scale dis",
     )
 
+    parser.add_option(
+        "--masking",
+        action="store_true",
+        help="If specified, will using masking.",
+    )
+
+    parser.add_option(
+        "--brush",
+        action="store_true",
+        help="If specified, will using brush.",
+    )
+
+    parser.add_option(
+        "--onlyupsample",
+        action="store_true",
+        help="If specified, will only use upsampling.",
+    )
+    parser.add_option(
+        "--nosig",
+        action="store_true",
+        help="If specified, will using nosig.",
+    )
+    parser.add_option(
+        "--maskconvkernel",
+        default=1,
+        type="int",
+        help="maskconvkernel.",
+    )
+
+    parser.add_option(
+        "--maskoffset",
+        default=0.5,
+        type="float",
+        help="maskoffset.",
+    )
+    parser.add_option(
+        "--swap",
+        action="store_true",
+        help="If specified, will using nosig.",
+    )
+
+    parser.add_option(
+        "--joint",
+        action="store_true",
+        help="If specified, will use joint-training.",
+    )
+
+    parser.add_option("--maskingcp", help="Directory for masking checkpoint")
     (options, args) = parser.parse_args()
     return options
 
@@ -296,6 +344,16 @@ class Trainer:
                     dim=32,
                     sigmoid=(not self.args.nosigmoid),
                     scaling=self.args.augreconweight,
+                    masking=self.args.masking,
+                    brush=self.args.brush,
+                    nosig=self.args.nosig,
+                    onlyupsample=self.args.onlyupsample,
+                    maskoffset=self.args.maskoffset,
+                    maskconvkernel=self.args.maskconvkernel,
+                    swap=self.args.swap,
+                    lut=self.args.lut,
+                    lutdim=self.args.lut_dim,
+                    joint=self.args.joint,
                 )
             else:
                 if self.args.lut:
@@ -388,11 +446,46 @@ class Trainer:
         else:
             input("Training from scratch. Are you sure? (Ctrl+C to kill):")
 
+        if self.args.masking:
+            if self.args.maskingcp:
+                self.restore_mask_model()
+            else:
+                print("Using Joint training")
+
         os.makedirs(
             "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s"
             % (self.args.tempdir),
             exist_ok=True,
         )
+
+    def load_matched_state_dict(self, model, state_dict, print_stats=True):
+        """
+        Only loads weights that matched in key and shape. Ignore other weights.
+        """
+
+        num_matched, num_total = 0, 0
+        curr_state_dict = model.state_dict()
+        for key in curr_state_dict.keys():
+            num_total += 1
+            if (
+                key in state_dict
+                and curr_state_dict[key].shape == state_dict[key].shape
+            ):
+                curr_state_dict[key] = state_dict[key]
+                num_matched += 1
+        model.load_state_dict(curr_state_dict)
+        if print_stats:
+            print(f"Loaded state_dict: {num_matched}/{num_total} matched")
+
+    def restore_mask_model(self):
+        """Restore latest model checkpoint (if any) and continue training from there."""
+
+        checkpoint_path = self.args.maskingcp
+
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+        self.load_matched_state_dict(self.model, checkpoint["state_dict"])
+        self.model.Resnet_no_grad()
 
     def restore_model(self):
         """Restore latest model checkpoint (if any) and continue training from there."""
@@ -491,10 +584,14 @@ class Trainer:
                             image_bg_bg, im_real, mask_bg
                         )
 
-                        _, output_composite_aug, par1_aug, par2_aug = self.model(
-                            image_bg_bg, im_real_augment, mask_bg
-                        )
+                        (
+                            input_composite_aug,
+                            output_composite_aug,
+                            par1_aug,
+                            par2_aug,
+                        ) = self.model(image_bg_bg, im_real_augment, mask_bg)
 
+                        # print(par2_aug.shape)
                     if self.args.reconwithgan:
 
                         ## Update D
@@ -689,12 +786,32 @@ class Trainer:
                                 )
                                 name = "%d_%d" % (index, kk)
 
+                                if self.args.masking:
+                                    image_gainmap = T.ToPILImage()(
+                                        self.model.output_final[kk, ...]
+                                        .cpu()
+                                        .clamp(0, 1)
+                                    )
+                                    image_gainmap.save(
+                                        "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug_gain.jpg"
+                                        % (self.args.tempdir, name)
+                                    )
+
                                 image_aug = T.ToPILImage()(
                                     output_composite_aug[kk, ...].cpu().clamp(0, 1)
                                 )
 
                                 image_aug.save(
                                     "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug.jpg"
+                                    % (self.args.tempdir, name)
+                                )
+
+                                image_aug_inter = T.ToPILImage()(
+                                    input_composite_aug[kk, ...].cpu().clamp(0, 1)
+                                )
+
+                                image_aug_inter.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug_inter.jpg"
                                     % (self.args.tempdir, name)
                                 )
 
@@ -969,15 +1086,25 @@ class Trainer:
                     self.optimizer.step()
 
                     losses_D_all_com.append(loss_G_adv.item())
+                    if self.args.augreconweight:
 
-                    tqdm_bar.set_description(
-                        "E: {}. L_G: {:3f} L_D: {:3f} Scalor: {:3f} ".format(
-                            epoch,
-                            loss_G_adv.item(),
-                            loss_D.item(),
-                            self.model.scalor,
+                        tqdm_bar.set_description(
+                            "E: {}. L_G: {:3f} L_D: {:3f} Scalor: {:3f} ".format(
+                                epoch,
+                                loss_G_adv.item(),
+                                loss_D.item(),
+                                self.model.scalor,
+                            )
                         )
-                    )
+
+                    else:
+                        tqdm_bar.set_description(
+                            "E: {}. L_G: {:3f} L_D: {:3f}".format(
+                                epoch,
+                                loss_G_adv.item(),
+                                loss_D.item(),
+                            )
+                        )
                     if epoch % 1 == 0 and index < 20:
                         # self.save_model(epoch)
 
@@ -994,7 +1121,14 @@ class Trainer:
                             image_all = T.ToPILImage()(
                                 output_composite[kk, ...].cpu().clamp(0, 1)
                             )
-
+                            if self.args.masking:
+                                image_gainmap = T.ToPILImage()(
+                                    self.model.output_final[kk, ...].cpu().clamp(0, 1)
+                                )
+                                image_gainmap.save(
+                                    "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_gain.jpg"
+                                    % (self.args.tempdir, name)
+                                )
                             image_dis = T.ToPILImage()(
                                 pred_fake[kk, ...].cpu().clamp(0, 1)
                             )

@@ -537,10 +537,15 @@ class PIHData_Composite(Dataset):
         """
 
         image_path = self.image_paths[index]
-        input_bg = Image.open(image_path)
-        input_composite = Image.open(image_path.replace("bg", "composite"))
-        input_mask = Image.open(image_path.replace("bg", "mask"))
-        input_real = Image.open(image_path.replace("bg", "gt"))
+        input_bg = Image.open(image_path).resize((512, 512))
+        input_composite = Image.open(image_path.replace("bg", "composite")).resize(
+            (512, 512)
+        )
+        input_mask = Image.open(image_path.replace("bg", "mask")).resize((512, 512))
+        if os.path.exists(image_path.replace("bg", "real")):
+            input_real = Image.open(image_path.replace("bg", "real")).resize((512, 512))
+        else:
+            input_real = Image.open(image_path.replace("bg", "gt")).resize((512, 512))
 
         # original_image = np.load(self.image_paths[index])[None].astype(np.complex64)
 
