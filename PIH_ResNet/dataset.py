@@ -305,7 +305,7 @@ class IhdDataset(Dataset):
 
 
 class DataCompositeGAN(Dataset):
-    def __init__(self, data_directory, ratio=1, augment=False):
+    def __init__(self, data_directory, ratio=1, augment=False, colorjitter=True):
         """
 
         Parameters
@@ -324,6 +324,11 @@ class DataCompositeGAN(Dataset):
         )
         self.transforms = T.Compose([T.ToTensor()])
         self.transforms_mask = T.Compose([T.Grayscale(), T.ToTensor()])
+        self.colorjitter = colorjitter
+        if self.colorjitter:
+            self.transform_color = T.ColorJitter(
+                brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+            )
         self.augment = augment
 
     def __len__(self):
@@ -434,6 +439,11 @@ class DataCompositeGAN(Dataset):
             shear=0,
         )
 
+        if self.colorjitter:
+            if np.random.rand() < 0.6:
+                # print("i love you one")
+                image_fg_aff_all = self.transform_color(image_fg_aff_all)
+
         im_composite = Image.composite(image_fg_aff_all, image_bg_bg, mask_fg_aff_all)
 
         ## What we want to output? Background, im_composite, mask_fg_aff_all, real_image
@@ -475,6 +485,13 @@ class DataCompositeGAN(Dataset):
         )
 
         im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
+
+        if self.colorjitter:
+            if np.random.rand() < 0.6:
+                # print("i love you two")
+
+                image_bg_augment_shift = self.transform_color(image_bg_augment_shift)
+
         im_real_augment = Image.composite(
             image_bg_augment_shift, image_bg_bg, mask_bg_shift
         )

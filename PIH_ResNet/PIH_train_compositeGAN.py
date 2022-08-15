@@ -297,11 +297,20 @@ def get_args():
         action="store_true",
         help="If specified, will using nosig.",
     )
-
+    parser.add_option(
+        "--colorjitter",
+        action="store_true",
+        help="If specified, will use colorjitter.",
+    )
     parser.add_option(
         "--joint",
         action="store_true",
         help="If specified, will use joint-training.",
+    )
+    parser.add_option(
+        "--pihnetbool",
+        action="store_true",
+        help="If specified, will use pihnet.",
     )
 
     parser.add_option("--maskingcp", help="Directory for masking checkpoint")
@@ -322,7 +331,10 @@ class Trainer:
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
         self.dataset = DataCompositeGAN(
-            self.args.datadir, self.args.trainingratio, augment=self.args.pairaugment
+            self.args.datadir,
+            self.args.trainingratio,
+            augment=self.args.pairaugment,
+            colorjitter=self.args.colorjitter,
         )
 
         self.dataloader = DataLoader(
@@ -354,6 +366,7 @@ class Trainer:
                     lut=self.args.lut,
                     lutdim=self.args.lut_dim,
                     joint=self.args.joint,
+                    PIHNet_bool=self.args.pihnetbool,
                 )
             else:
                 if self.args.lut:
@@ -841,7 +854,7 @@ class Trainer:
                                 )
 
                                 image_og = T.ToPILImage()(
-                                    im_real[kk, ...].cpu().clamp(0, 1)
+                                    im_real_augment[kk, ...].cpu().clamp(0, 1)
                                 )
                                 image_og.save(
                                     "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_composite_L1.jpg"

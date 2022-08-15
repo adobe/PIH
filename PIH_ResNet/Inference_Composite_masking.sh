@@ -7,8 +7,9 @@ echo GPU: $3
 CUDA_VISIBLE_DEVICES=$3
 
 mkdir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/
-
-CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_composite_realhm/ \
+# /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_composite_realhm/
+ 
+CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/localssd/File_for_testing_composite_realhm/ \
                                            -g 0 \
                                            --checkpoints $1 \
                                            --tmp_results /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/results_testing/ \
@@ -19,8 +20,10 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /home/
                                            --piecewiselinear \
                                            --masking \
                                            --brush \
-                                           --maskoffset 0 \
+                                           --maskoffset 0.6 \
                                            --swap \
+                                        #    --lut \
+
                                                                                    #    --lut \
                                         #    --onlyupsample \
                                         #    --maskconvkernel 3 \
