@@ -22,6 +22,7 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/l
                                            --brush \
                                            --maskoffset 0.6 \
                                            --swap \
+                                                                                    #   --pihnetbool \
                                         #    --lut \
 
                                                                                    #    --lut \

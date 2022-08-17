@@ -136,7 +136,11 @@ def get_args():
         action="store_true",
         help="If specified, will only use upsampling.",
     )
-
+    parser.add_option(
+        "--pihnetbool",
+        action="store_true",
+        help="If specified, will use pihnet.",
+    )
     (options, args) = parser.parse_args()
     return options
 
@@ -212,6 +216,7 @@ class Evaluater:
                     maskconvkernel=self.args.maskconvkernel,
                     swap=self.args.swap,
                     lut=self.args.lut,
+                    PIHNet_bool=self.args.pihnetbool,
                 )
 
             else:
