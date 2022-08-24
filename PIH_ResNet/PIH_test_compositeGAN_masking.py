@@ -141,6 +141,12 @@ def get_args():
         action="store_true",
         help="If specified, will use pihnet.",
     )
+
+    parser.add_option(
+        "--vitbool",
+        action="store_true",
+        help="If specified, will use pihnet.",
+    )
     (options, args) = parser.parse_args()
     return options
 
@@ -205,7 +211,7 @@ class Evaluater:
 
             if self.args.piecewiselinear:
                 self.model = Model_Composite_PL(
-                    dim=32,
+                    dim=64,
                     sigmoid=True,
                     scaling=False,
                     masking=self.args.masking,
@@ -217,6 +223,7 @@ class Evaluater:
                     swap=self.args.swap,
                     lut=self.args.lut,
                     PIHNet_bool=self.args.pihnetbool,
+                    Vit_bool=self.args.vitbool,
                 )
 
             else:

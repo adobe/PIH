@@ -327,7 +327,7 @@ class DataCompositeGAN(Dataset):
         self.colorjitter = colorjitter
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=0.15, contrast=0.15, saturation=0.15, hue=0.08
+                brightness=0.08, contrast=0.08, saturation=0.08, hue=0.02
             )
         self.augment = augment
 

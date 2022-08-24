@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 import torch
 import torch.nn.functional as f
+from vit_pytorch import ViT
+
 
 __all__ = [
     "ResNet",
@@ -360,6 +362,35 @@ class ResNet_PIH(nn.Module):
         return x
 
 
+class VitNet(nn.Module):
+    def __init__(
+        self, pretrained=False, input_f=7, num_classes=1000, sigmoid=False, **kwargs
+    ):
+        super(VitNet, self).__init__()
+        self.num_classes = num_classes
+        self.Vit = ViT(
+            image_size=512,
+            patch_size=32,
+            num_classes=self.num_classes,
+            dim=1024,
+            depth=24,
+            heads=16,
+            mlp_dim=4096,
+            dropout=0.1,
+            emb_dropout=0.1,
+            channels=input_f,
+        )
+        self.sigmoid = sigmoid
+
+    def forward(self, x):
+
+        feature_output = self.Vit(x)
+        if self.sigmoid:
+            feature_output = nn.Sigmoid()(feature_output)
+
+        return feature_output, 0
+
+
 class PIHNet(nn.Module):
     def __init__(
         self, pretrained=False, input_f=7, num_classes=1000, sigmoid=False, **kwargs
@@ -369,12 +400,12 @@ class PIHNet(nn.Module):
 
         self.model_fg = ResNet_PIH(BasicBlock, [3, 4, 6, 3], input_f=4, **kwargs)
 
+        self.model_cp = ResNet_PIH(BasicBlock, [3, 4, 6, 3], input_f=4, **kwargs)
+
         self.classifier = nn.Sequential(
             nn.Linear(512 * 3 * 3, 1024),
             nn.ReLU(True),
-            nn.Linear(1024, 512),
-            nn.ReLU(True),
-            nn.Linear(512, num_classes),
+            nn.Linear(1024, num_classes),
         )
         self.sigmoid = sigmoid
 
@@ -384,7 +415,9 @@ class PIHNet(nn.Module):
         mask_image = x[:, 6:, ...]
         feature_bg = self.model_bg(torch.cat((1 - mask_image, bg_image), 1))
         feature_fg = self.model_fg(torch.cat((mask_image, input_image * mask_image), 1))
-        feature_all = feature_bg + feature_fg
+        feature_cp = self.model_cp(torch.cat((mask_image, input_image), 1))
+
+        feature_all = feature_bg + feature_fg + feature_cp
         feature_output = self.classifier(feature_all)
         if self.sigmoid:
             feature_output = nn.Sigmoid()(feature_output)

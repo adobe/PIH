@@ -5,7 +5,8 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 import torch.nn.functional as FN
 
-from resnet import resnet18, resnet34, PIHNet
+from resnet import resnet18, resnet34, PIHNet, VitNet
+
 from unet.unet_model import UNet
 from unet_dis import UNet_mask
 
@@ -352,6 +353,7 @@ class Model_Composite_PL(torch.nn.Module):
         lutdim=16,
         joint=False,
         PIHNet_bool=False,
+        Vit_bool=False,
     ):
         super().__init__()
         self.dim = dim
@@ -361,9 +363,14 @@ class Model_Composite_PL(torch.nn.Module):
         self.joint = joint
 
         self.PIHNet_bool = PIHNet_bool
+        self.Vit_bool = Vit_bool
+
         if self.PIHNet_bool:
             self.colornet = PIHNet
             print("Using PIHNet!")
+        elif self.Vit_bool:
+            self.colornet = VitNet
+            print("Using ViT!")
         else:
             self.colornet = resnet34
             print("Using ResNet!")
@@ -396,6 +403,7 @@ class Model_Composite_PL(torch.nn.Module):
                     sigmoid=sigmoid,
                 )
             else:
+
                 self.PL = self.colornet(
                     num_classes=self.dim * 3,
                     input_f=7,

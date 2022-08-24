@@ -216,6 +216,12 @@ def get_args():
         type="int",
         help="Dimension of the LUT.",
     )
+    parser.add_option(
+        "--pl-dim",
+        default=32,
+        type="int",
+        help="Dimension of the PIL.",
+    )
 
     parser.add_option(
         "--warmup",
@@ -313,6 +319,18 @@ def get_args():
         help="If specified, will use pihnet.",
     )
 
+    parser.add_option(
+        "--vitbool",
+        action="store_true",
+        help="If specified, will use vit.",
+    )
+
+    parser.add_option(
+        "--onlysaveg",
+        action="store_true",
+        help="If specified, will only save g.",
+    )
+
     parser.add_option("--maskingcp", help="Directory for masking checkpoint")
     (options, args) = parser.parse_args()
     return options
@@ -353,7 +371,7 @@ class Trainer:
         else:
             if self.args.piecewiselinear:
                 self.model = Model_Composite_PL(
-                    dim=32,
+                    dim=self.args.pl_dim,
                     sigmoid=(not self.args.nosigmoid),
                     scaling=self.args.augreconweight,
                     masking=self.args.masking,
@@ -367,6 +385,7 @@ class Trainer:
                     lutdim=self.args.lut_dim,
                     joint=self.args.joint,
                     PIHNet_bool=self.args.pihnetbool,
+                    Vit_bool=self.args.vitbool,
                 )
             else:
                 if self.args.lut:
@@ -533,17 +552,29 @@ class Trainer:
         epoch : int
             The current epoch number.
         """
-        torch.save(
-            {
-                "epoch": epoch,  # Epoch we just finished
-                "state_dict": self.model.state_dict(),
-                "optimizer_dict": self.optimizer.state_dict(),
-                "state_dict_D": self.model_D.state_dict(),
-                "optimizer_dict_D": self.optimizer_D.state_dict(),
-                "args": self.args,
-            },
-            os.path.join(self.checkpoint_directory, "ckpt{}.pth".format(epoch)),
-        )
+
+        if self.args.onlysaveg:
+            torch.save(
+                {
+                    "epoch": epoch,  # Epoch we just finished
+                    "state_dict": self.model.state_dict(),
+                    "args": self.args,
+                },
+                os.path.join(self.checkpoint_directory, "ckpt_g{}.pth".format(epoch)),
+            )
+        else:
+
+            torch.save(
+                {
+                    "epoch": epoch,  # Epoch we just finished
+                    "state_dict": self.model.state_dict(),
+                    "optimizer_dict": self.optimizer.state_dict(),
+                    "state_dict_D": self.model_D.state_dict(),
+                    "optimizer_dict_D": self.optimizer_D.state_dict(),
+                    "args": self.args,
+                },
+                os.path.join(self.checkpoint_directory, "ckpt{}.pth".format(epoch)),
+            )
 
     def train(self):
         """Train the model!"""
