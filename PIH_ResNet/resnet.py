@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as f
 from vit_pytorch import ViT
 
+from efficientnet_v2 import EfficientNetV2
+
 
 __all__ = [
     "ResNet",
@@ -391,6 +393,27 @@ class VitNet(nn.Module):
         return feature_output, 0
 
 
+class EffNetV2(nn.Module):
+    def __init__(
+        self, pretrained=False, input_f=7, num_classes=1000, sigmoid=False, **kwargs
+    ):
+        super(EffNetV2, self).__init__()
+        self.num_classes = num_classes
+
+        self.EffNet = EfficientNetV2(
+            "s", in_channels=input_f, n_classes=self.num_classes, pretrained=False
+        )
+        self.sigmoid = sigmoid
+
+    def forward(self, x):
+
+        feature_output = self.EffNet(x)
+        if self.sigmoid:
+            feature_output = nn.Sigmoid()(feature_output)
+
+        return feature_output, 0
+
+
 class PIHNet(nn.Module):
     def __init__(
         self, pretrained=False, input_f=7, num_classes=1000, sigmoid=False, **kwargs
@@ -468,12 +491,19 @@ def resnet34(pretrained=False, input_f=4, num_classes=1000, sigmoid=False, **kwa
     return model
 
 
-def resnet50(pretrained=False, num_classes=1000, **kwargs):
+def resnet50(pretrained=False, input_f=4, num_classes=1000, sigmoid=False, **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 4, 6, 3], num_classes=num_classes, **kwargs)
+    model = ResNet(
+        Bottleneck,
+        [3, 4, 6, 3],
+        num_classes=num_classes,
+        input_f=input_f,
+        sigmoid=sigmoid,
+        **kwargs
+    )
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls["resnet50"]))
     return model

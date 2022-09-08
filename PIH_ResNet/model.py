@@ -5,7 +5,7 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 import torch.nn.functional as FN
 
-from resnet import resnet18, resnet34, PIHNet, VitNet
+from resnet import resnet18, resnet34, PIHNet, VitNet, EffNetV2, resnet50
 
 from unet.unet_model import UNet
 from unet_dis import UNet_mask
@@ -354,6 +354,8 @@ class Model_Composite_PL(torch.nn.Module):
         joint=False,
         PIHNet_bool=False,
         Vit_bool=False,
+        Eff_bool=False,
+        aggupsample=False,
     ):
         super().__init__()
         self.dim = dim
@@ -364,6 +366,7 @@ class Model_Composite_PL(torch.nn.Module):
 
         self.PIHNet_bool = PIHNet_bool
         self.Vit_bool = Vit_bool
+        self.Eff_bool = Eff_bool
 
         if self.PIHNet_bool:
             self.colornet = PIHNet
@@ -371,8 +374,11 @@ class Model_Composite_PL(torch.nn.Module):
         elif self.Vit_bool:
             self.colornet = VitNet
             print("Using ViT!")
+        elif self.Eff_bool:
+            self.colornet = EffNetV2
+
         else:
-            self.colornet = resnet34
+            self.colornet = resnet50
             print("Using ResNet!")
 
         if self.lut:
@@ -425,6 +431,7 @@ class Model_Composite_PL(torch.nn.Module):
                 maskoffset=maskoffset,
                 maskconvkernel=maskconvkernel,
                 swap=swap,
+                aggupsample=aggupsample,
             )
 
     def Resnet_no_grad(self):

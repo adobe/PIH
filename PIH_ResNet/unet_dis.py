@@ -14,11 +14,15 @@ class UNetDiscriminatorSN(th.nn.Module):
         channels_dim: int = 64,
         skip_connection: bool = True,
         Low_dim=False,
+        lessskip=False,
     ):
         super().__init__()
         self.skip_connection = skip_connection
         norm = th.nn.utils.spectral_norm
         self.low_dim = Low_dim
+        self.lessskip = lessskip
+        if self.lessskip and self.skip_connection:
+            print("Use less skip!!")
         self.conv0 = th.nn.Conv2d(
             input_dim, channels_dim, kernel_size=3, stride=1, padding=1
         )
@@ -107,7 +111,11 @@ class UNetDiscriminatorSN(th.nn.Module):
             x3_6 = F.leaky_relu(self.conv4_3(x3_5), negative_slope=0.2, inplace=True)
 
             if self.skip_connection:
-                x3_6 = x3_6 + x3
+                if self.lessskip:
+                    pass
+                else:
+                    x3_6 = x3_6 + x3
+                # pass
             # upsample
             x3 = F.interpolate(
                 x3_6, size=x2.shape[-2:], mode="bilinear", align_corners=False
@@ -116,7 +124,8 @@ class UNetDiscriminatorSN(th.nn.Module):
             x4 = F.leaky_relu(self.conv4(x3), negative_slope=0.2, inplace=True)
 
             if self.skip_connection:
-                x4 = x4 + x2
+                # x4 = x4 + x2
+                pass
 
             x4 = F.interpolate(
                 x4, size=x1.shape[-2:], mode="bilinear", align_corners=False
@@ -124,14 +133,16 @@ class UNetDiscriminatorSN(th.nn.Module):
             # x4 = F.interpolate(x4, scale_factor=2, mode="bilinear", align_corners=False)
             x5 = F.leaky_relu(self.conv5(x4), negative_slope=0.2, inplace=True)
             if self.skip_connection:
-                x5 = x5 + x1
+                # x5 = x5 + x1
+                pass
             # x5 = F.interpolate(x5, scale_factor=2, mode="bilinear", align_corners=False)
             x5 = F.interpolate(
                 x5, size=x0.shape[-2:], mode="bilinear", align_corners=False
             )
             x6 = F.leaky_relu(self.conv6(x5), negative_slope=0.2, inplace=True)
             if self.skip_connection:
-                x6 = x6 + x0
+                # x6 = x6 + x0
+                pass
             # extra
             out = F.leaky_relu(self.conv7(x6), negative_slope=0.2, inplace=True)
             out = F.leaky_relu(self.conv8(out), negative_slope=0.2, inplace=True)
@@ -195,6 +206,7 @@ class UNet_mask(th.nn.Module):
         maskoffset=0.5,
         maskconvkernel=1,
         swap=False,
+        aggupsample=False,
     ):
         super().__init__()
         self.skip_connection = skip_connection
@@ -202,6 +214,9 @@ class UNet_mask(th.nn.Module):
         self.brush = brush
         self.nosig = nosig
         self.onlyupsample = onlyupsample
+        self.aggupsampe=aggupsample
+        if self.onlyupsample and self.aggupsampe:
+            print("Use Aggressive Upsampling!")
         self.low_dim = Low_dim
         self.maskoffset = maskoffset
         self.swap = swap
@@ -298,8 +313,11 @@ class UNet_mask(th.nn.Module):
         self.conv9 = th.nn.Conv2d(channels_dim, 1, 3, 1, 1)
         if self.onlyupsample:
             if self.maskconvkernel == 1:
-
-                self.conv_only = th.nn.Conv2d(channels_dim * 4, 1, 3, 1, 1)
+                
+                if self.aggupsampe:
+                    self.conv_only = th.nn.Conv2d(channels_dim * 8, 1, 3, 1, 1)
+                else:
+                    self.conv_only = th.nn.Conv2d(channels_dim * 4, 1, 3, 1, 1)
 
             if self.maskconvkernel == 3:
                 print("Conv kernel 3!")
@@ -350,18 +368,27 @@ class UNet_mask(th.nn.Module):
                     if self.skip_connection:
                         x3_6 = x3_6 + x3
                     # upsample
-                    x3 = F.interpolate(
-                        x3_6, size=x2.shape[-2:], mode="bilinear", align_corners=False
-                    )
-                    # x3 = F.interpolate(x3, scale_factor=2, mode="bilinear", align_corners=False)
-                    x4 = F.relu(self.conv4(x3), inplace=True)
+                    
+                    if self.aggupsampe:
+                        x4 = F.interpolate(
+                        x3_6, size=x0.shape[-2:], mode="bicubic", align_corners=False
+                        )
+                    else:
+                    
+                        x3 = F.interpolate(
+                            x3_6, size=x2.shape[-2:], mode="bilinear", align_corners=False
+                        )
+                        # x3 = F.interpolate(x3, scale_factor=2, mode="bilinear", align_corners=False)
+                        x4 = F.relu(self.conv4(x3), inplace=True)
 
-                    if self.skip_connection:
-                        x4 = x4 + x2
+                        if self.skip_connection:
+                            x4 = x4 + x2
 
-                    x4 = F.interpolate(
-                        x4, size=x0.shape[-2:], mode="bilinear", align_corners=False
-                    )
+                        x4 = F.interpolate(
+                            x4, size=x0.shape[-2:], mode="bicubic", align_corners=False
+                        )
+                    
+                    
                     # # x4 = F.interpolate(x4, scale_factor=2, mode="bilinear", align_corners=False)
                     # x5 = F.relu(self.conv5(x4), inplace=True)
                     # # if self.skip_connection:

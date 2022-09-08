@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dataset import DataCompositeGAN, DataCompositeGAN_iharmony
+from dataset import DataCompositeGAN
 from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
 from tqdm import tqdm
 from torch import Tensor
@@ -280,18 +280,6 @@ def get_args():
         action="store_true",
         help="If specified, will only use upsampling.",
     )
-
-    parser.add_option(
-        "--aggupsample",
-        action="store_true",
-        help="If specified, will only use aggressive upsamling, use with only upsample.",
-    )
-
-    parser.add_option(
-        "--lessskip",
-        action="store_true",
-        help="If specified, will only use aggressive upsamling, use with only upsample.",
-    )
     parser.add_option(
         "--nosig",
         action="store_true",
@@ -338,18 +326,7 @@ def get_args():
     )
 
     parser.add_option(
-        "--effbool",
-        action="store_true",
-        help="If specified, will use efficientnet v2 - m.",
-    )
-    parser.add_option(
         "--onlysaveg",
-        action="store_true",
-        help="If specified, will only save g.",
-    )
-
-    parser.add_option(
-        "--iharmdata",
         action="store_true",
         help="If specified, will only save g.",
     )
@@ -371,20 +348,12 @@ class Trainer:
         self.checkpoint_directory = os.path.join(f"{self.args.logdir}", "checkpoints")
         os.makedirs(self.checkpoint_directory, exist_ok=True)
 
-        if self.args.iharmdata:
-            self.dataset = DataCompositeGAN_iharmony(
-                self.args.datadir,
-                self.args.trainingratio,
-                augment=self.args.pairaugment,
-                colorjitter=self.args.colorjitter,
-            )
-        else:
-            self.dataset = DataCompositeGAN(
-                self.args.datadir,
-                self.args.trainingratio,
-                augment=self.args.pairaugment,
-                colorjitter=self.args.colorjitter,
-            )
+        self.dataset = DataCompositeGAN(
+            self.args.datadir,
+            self.args.trainingratio,
+            augment=self.args.pairaugment,
+            colorjitter=self.args.colorjitter,
+        )
 
         self.dataloader = DataLoader(
             self.dataset,
@@ -417,8 +386,6 @@ class Trainer:
                     joint=self.args.joint,
                     PIHNet_bool=self.args.pihnetbool,
                     Vit_bool=self.args.vitbool,
-                    Eff_bool=self.args.effbool,
-                    aggupsample=self.args.aggupsample,
                 )
             else:
                 if self.args.lut:
@@ -443,7 +410,6 @@ class Trainer:
                         input_dim=self.args.inputdimD,
                         skip_connection=False,
                         Low_dim=self.args.lowdim,
-                        lessskip=self.args.lessskip,
                     )
                 else:
                     print("With Skip connection!")
@@ -451,7 +417,6 @@ class Trainer:
                     self.model_D = UNetDiscriminatorSN(
                         input_dim=self.args.inputdimD,
                         Low_dim=self.args.lowdim,
-                        lessskip=self.args.lessskip,
                     )
             else:
                 self.model_D = networks.define_D(3, 64, "n_layers", 3)
@@ -737,11 +702,7 @@ class Trainer:
                             else:
                                 loss_D_real = self.criterion_GAN(pred_real, True)
 
-                            loss_D = (
-                                0.5
-                                * (loss_D_fake + loss_D_real)
-                                * (1 - self.args.reconweight)
-                            )
+                            loss_D = 0.5 * (loss_D_fake + loss_D_real)
 
                             if self.args.augreconweight:
                                 if self.args.losstype == 0:
@@ -819,9 +780,7 @@ class Trainer:
                                 )
 
                         else:
-                            loss_G_all = (
-                                1 - self.args.reconweight
-                            ) * loss_G_adv + self.args.reconweight * loss_l1
+                            loss_G_all = loss_G_adv + self.args.reconweight * loss_l1
 
                         loss_G_all.backward()
 
@@ -1111,11 +1070,7 @@ class Trainer:
                         else:
                             loss_D_real = self.criterion_GAN(pred_real, True)
 
-                        loss_D = (
-                            0.5
-                            * (loss_D_fake + loss_D_real)
-                            * (1 - self.args.reconweight)
-                        )
+                        loss_D = 0.5 * (loss_D_fake + loss_D_real)
                         if self.args.augreconweight:
                             if self.args.losstype == 0:
                                 loss_D = self.model.scalor * loss_D
@@ -1158,13 +1113,9 @@ class Trainer:
                     pred_fake = self.model_D(fake_AB)
                     if self.args.ganlossmask:
 
-                        loss_G_adv = (1 - self.args.reconweight) * self.criterion_GAN(
-                            pred_fake, True, mask=mask
-                        )
+                        loss_G_adv = self.criterion_GAN(pred_fake, True, mask=mask)
                     else:
-                        loss_G_adv = (1 - self.args.reconweight) * self.criterion_GAN(
-                            pred_fake, True
-                        )
+                        loss_G_adv = self.criterion_GAN(pred_fake, True)
 
                     if self.args.augreconweight:
                         if self.args.losstype == 0:

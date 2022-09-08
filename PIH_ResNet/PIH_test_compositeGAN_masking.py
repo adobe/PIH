@@ -118,6 +118,14 @@ def get_args():
         action="store_true",
         help="If specified, will only use upsampling.",
     )
+    
+    parser.add_option(
+        "--aggupsample",
+        action="store_true",
+        help="If specified, will only use agg upsampling.",
+    )
+    
+    
     parser.add_option(
         "--maskconvkernel",
         default=1,
@@ -147,6 +155,13 @@ def get_args():
         action="store_true",
         help="If specified, will use pihnet.",
     )
+
+    parser.add_option(
+        "--effbool",
+        action="store_true",
+        help="If specified, will use efficientnet v2 - s.",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -211,7 +226,7 @@ class Evaluater:
 
             if self.args.piecewiselinear:
                 self.model = Model_Composite_PL(
-                    dim=64,
+                    dim=32,
                     sigmoid=True,
                     scaling=False,
                     masking=self.args.masking,
@@ -224,6 +239,8 @@ class Evaluater:
                     lut=self.args.lut,
                     PIHNet_bool=self.args.pihnetbool,
                     Vit_bool=self.args.vitbool,
+                    Eff_bool=self.args.effbool,
+                    aggupsample=self.args.aggupsample,
                 )
 
             else:

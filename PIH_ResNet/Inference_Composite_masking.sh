@@ -16,15 +16,18 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /home/
                                            --tmp_results /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/results_testing/ \
                                            --bs 1 \
                                            --composite \
-                                           --num-testing 2000 \
+                                           --num-testing 500 \
                                            --nocurve \
                                            --piecewiselinear \
-                                           --vitbool \
-                                          #  --masking \
-                                          #  --brush \
-                                          #  --maskoffset 0.6 \
-                                          #  --swap \
-                                          #  --vitbool \
+                                           --masking \
+                                           --brush \
+                                           --maskoffset 0.7 \
+                                           --swap \
+                                           --onlyupsample \
+                                           --aggupsample \
+
+
+                                        #  --vitbool \
                                            
                                         #    --pihnetbool \
                                                                                     #   --pihnetbool \
@@ -32,7 +35,7 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /home/
 
                                                                                    #    --lut \
                                         #    --onlyupsample \
-                                        #    --maskconvkernel 3 \
+                                        #    --maskconvkernel 3 \ 
 
 #                                           #  --onlyupsample \
 #                                           #  --maskconvkernel 3 \
