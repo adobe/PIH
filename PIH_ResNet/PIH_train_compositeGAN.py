@@ -354,6 +354,12 @@ def get_args():
         help="If specified, will only save g.",
     )
 
+    parser.add_option(
+        "--scheduler",
+        action="store_true",
+        help="If specified, will only save g.",
+    )
+
     parser.add_option("--maskingcp", help="Directory for masking checkpoint")
     (options, args) = parser.parse_args()
     return options
@@ -495,6 +501,12 @@ class Trainer:
             self.model.parameters(), lr=self.args.learning_rate
         )
 
+        if self.args.scheduler:
+            self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                self.optimizer, milestones=[10, 20, 30, 40, 50, 60], gamma=0.5
+            )  # learning rate decay
+            # print("current lr:",self.scheduler.get_lr())
+
         if self.args.sgd:
             print("Using SGD")
             self.optimizer_D = torch.optim.SGD(
@@ -506,6 +518,12 @@ class Trainer:
             self.optimizer_D = torch.optim.Adam(
                 self.model_D.parameters(), lr=self.args.learning_rate_d
             )
+
+        if self.args.scheduler:
+            self.scheduler_D = torch.optim.lr_scheduler.MultiStepLR(
+                self.optimizer_D, milestones=[10, 20, 30, 40, 50, 60], gamma=0.5
+            )  # learning rate decay
+            # print("current lr:",self.scheduler.get_lr())
 
         self.start_epoch = 1
         if not self.args.force_train_from_scratch:
@@ -623,6 +641,12 @@ class Trainer:
         losses_D_all_com = []
 
         for epoch in range(self.start_epoch, self.args.epochs + 1):
+
+            if self.args.scheduler:
+                self.scheduler.step()
+                self.scheduler_D.step()
+                print("current lr:", self.scheduler.get_last_lr())
+                print("current lr D:", self.scheduler_D.get_last_lr())
 
             self.model.train()
             tqdm_bar = tqdm(enumerate(self.dataloader), "Index")
@@ -790,10 +814,9 @@ class Trainer:
                         else:
                             loss_G_adv = self.criterion_GAN(pred_fake, True)
 
+                        loss_l1 = self.reconloss(output_composite_aug, im_real)
                         if self.args.purepairaugment:
-                            loss_l1 = 0 * self.reconloss(
-                                output_composite, im_real
-                            ) + self.reconloss(output_composite_aug, im_real)
+                            loss_l1 = self.reconloss(output_composite_aug, im_real)
                         else:
                             loss_l1 = 1 * self.reconloss(
                                 output_composite, im_real
