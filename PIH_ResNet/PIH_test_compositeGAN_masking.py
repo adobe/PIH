@@ -7,7 +7,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from dataset import PIHData, PIHDataNGT, IhdDataset, PIHData_Composite
-from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
+from model import (
+    Model,
+    Model_Composite,
+    Model_UNet,
+    Model_Composite_PL,
+    Model_Composite_PL_NoBG,
+)
 from tqdm import tqdm
 from torch import Tensor
 import matplotlib.pyplot as plt
@@ -118,14 +124,13 @@ def get_args():
         action="store_true",
         help="If specified, will only use upsampling.",
     )
-    
+
     parser.add_option(
         "--aggupsample",
         action="store_true",
         help="If specified, will only use agg upsampling.",
     )
-    
-    
+
     parser.add_option(
         "--maskconvkernel",
         default=1,
@@ -133,6 +138,12 @@ def get_args():
         help="maskconvkernel.",
     )
 
+    parser.add_option(
+        "--dim",
+        default=32,
+        type="int",
+        help="maskconvkernel.",
+    )
     parser.add_option(
         "--maskoffset",
         default=0.5,
@@ -160,6 +171,28 @@ def get_args():
         "--effbool",
         action="store_true",
         help="If specified, will use efficientnet v2 - s.",
+    )
+
+    parser.add_option(
+        "--twoinputs",
+        action="store_true",
+        help="If specified, will use two inputs.",
+    )
+    parser.add_option(
+        "--depthmap",
+        action="store_true",
+        help="If specified, will depthmap.",
+    )
+    parser.add_option(
+        "--bgshadow",
+        action="store_true",
+        help="If specified, will use bgshadow.",
+    )
+
+    parser.add_option(
+        "--ibn",
+        action="store_true",
+        help="If specified, will use ibn.",
     )
 
     (options, args) = parser.parse_args()
@@ -190,6 +223,8 @@ class Evaluater:
         os.makedirs(self.tmp + "/bg/", exist_ok=True)
         if self.args.masking:
             os.makedirs(self.tmp + "/gainmap/", exist_ok=True)
+            if self.args.bgshadow:
+                os.makedirs(self.tmp + "/bgshadow/", exist_ok=True)
 
         if self.args.piecewiselinear:
             os.makedirs(self.tmp + "/curves/", exist_ok=True)
@@ -225,23 +260,45 @@ class Evaluater:
         if self.args.composite:
 
             if self.args.piecewiselinear:
-                self.model = Model_Composite_PL(
-                    dim=32,
-                    sigmoid=True,
-                    scaling=False,
-                    masking=self.args.masking,
-                    brush=self.args.brush,
-                    nosig=self.args.nosig,
-                    onlyupsample=self.args.onlyupsample,
-                    maskoffset=self.args.maskoffset,
-                    maskconvkernel=self.args.maskconvkernel,
-                    swap=self.args.swap,
-                    lut=self.args.lut,
-                    PIHNet_bool=self.args.pihnetbool,
-                    Vit_bool=self.args.vitbool,
-                    Eff_bool=self.args.effbool,
-                    aggupsample=self.args.aggupsample,
-                )
+                if self.args.twoinputs:
+                    self.model = Model_Composite_PL_NoBG(
+                        dim=self.args.dim,
+                        sigmoid=True,
+                        scaling=False,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                    )
+                else:
+                    self.model = Model_Composite_PL(
+                        dim=self.args.dim,
+                        sigmoid=True,
+                        scaling=False,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                        depthmap=self.args.depthmap,
+                        bgshadow=self.args.bgshadow,
+                        ibn=self.args.ibn,
+                    )
 
             else:
                 if self.args.unet:
@@ -300,9 +357,14 @@ class Evaluater:
                         input_composite, input_mask, input_bg
                     )
                 else:
-                    inter_composite, output_composite, par1, par2 = self.model(
-                        input_bg, input_composite, input_mask
-                    )
+                    if self.args.twoinputs:
+                        inter_composite, output_composite, par1, par2 = self.model(
+                            input_composite, input_mask
+                        )
+                    else:
+                        inter_composite, output_composite, par1, par2 = self.model(
+                            input_bg, input_composite, input_mask
+                        )
 
             brightness, contrast, saturation = par1
             b_r, b_g, b_b = par1
@@ -374,6 +436,19 @@ class Evaluater:
                         * input_mask[kk, ...].cpu()
                     )
                     image_gainmap.save(self.tmp + "/gainmap/%s" % (name_image))
+
+                    if self.args.bgshadow:
+                        # output_bg_shadow
+
+                        image_bgshadow = T.ToPILImage()(
+                            self.model.output_bg_shadow[kk, ...].cpu()
+                            * (1 - input_mask[kk, ...].cpu())
+                        )
+
+                        print("max:", self.model.output_bg_shadow[kk, ...].cpu().max())
+                        print("min:", self.model.output_bg_shadow[kk, ...].cpu().min())
+
+                        image_bgshadow.save(self.tmp + "/bgshadow/%s" % (name_image))
 
                 # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 # image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))

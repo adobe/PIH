@@ -207,6 +207,7 @@ class UNet_mask(th.nn.Module):
         maskconvkernel=1,
         swap=False,
         aggupsample=False,
+        outputdim=1,
     ):
         super().__init__()
         self.skip_connection = skip_connection
@@ -214,7 +215,7 @@ class UNet_mask(th.nn.Module):
         self.brush = brush
         self.nosig = nosig
         self.onlyupsample = onlyupsample
-        self.aggupsampe=aggupsample
+        self.aggupsampe = aggupsample
         if self.onlyupsample and self.aggupsampe:
             print("Use Aggressive Upsampling!")
         self.low_dim = Low_dim
@@ -313,11 +314,11 @@ class UNet_mask(th.nn.Module):
         self.conv9 = th.nn.Conv2d(channels_dim, 1, 3, 1, 1)
         if self.onlyupsample:
             if self.maskconvkernel == 1:
-                
+
                 if self.aggupsampe:
-                    self.conv_only = th.nn.Conv2d(channels_dim * 8, 1, 3, 1, 1)
+                    self.conv_only = th.nn.Conv2d(channels_dim * 8, outputdim, 3, 1, 1)
                 else:
-                    self.conv_only = th.nn.Conv2d(channels_dim * 4, 1, 3, 1, 1)
+                    self.conv_only = th.nn.Conv2d(channels_dim * 4, outputdim, 3, 1, 1)
 
             if self.maskconvkernel == 3:
                 print("Conv kernel 3!")
@@ -368,15 +369,21 @@ class UNet_mask(th.nn.Module):
                     if self.skip_connection:
                         x3_6 = x3_6 + x3
                     # upsample
-                    
+
                     if self.aggupsampe:
                         x4 = F.interpolate(
-                        x3_6, size=x0.shape[-2:], mode="bicubic", align_corners=False
+                            x3_6,
+                            size=x0.shape[-2:],
+                            mode="bicubic",
+                            align_corners=False,
                         )
                     else:
-                    
+
                         x3 = F.interpolate(
-                            x3_6, size=x2.shape[-2:], mode="bilinear", align_corners=False
+                            x3_6,
+                            size=x2.shape[-2:],
+                            mode="bilinear",
+                            align_corners=False,
                         )
                         # x3 = F.interpolate(x3, scale_factor=2, mode="bilinear", align_corners=False)
                         x4 = F.relu(self.conv4(x3), inplace=True)
@@ -387,8 +394,7 @@ class UNet_mask(th.nn.Module):
                         x4 = F.interpolate(
                             x4, size=x0.shape[-2:], mode="bicubic", align_corners=False
                         )
-                    
-                    
+
                     # # x4 = F.interpolate(x4, scale_factor=2, mode="bilinear", align_corners=False)
                     # x5 = F.relu(self.conv5(x4), inplace=True)
                     # # if self.skip_connection:

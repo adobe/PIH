@@ -23,6 +23,11 @@ then
 elif [ $5 == LRself ]
 then
    a=File_for_testing_composite_LR_self_2000
+
+
+elif [ $5 == self ]
+then
+   a=File_for_testing_self
 else
    a=0
 fi
@@ -50,7 +55,9 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/l
                                            --swap \
                                            --onlyupsample \
                                            --aggupsample \
-                                          --twoinputs \
+                                          #  --ibn \
+#                                           --bgshadow \
+                                          # --twoinputs \
 
 
                                         #  --vitbool \

@@ -327,7 +327,7 @@ class DataCompositeGAN(Dataset):
         self.colorjitter = colorjitter
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=0.08, contrast=0.08, saturation=0.08, hue=0.02
+                brightness=[0.65, 1.35], contrast=0.3, saturation=0.05, hue=0.02
             )
         self.augment = augment
 
@@ -349,9 +349,9 @@ class DataCompositeGAN(Dataset):
         Foreground
         """
 
-        path_fg = self.image_paths[index]  # ForeGround
+        path_bg = self.image_paths[index]  # ForeGround
 
-        path_bg = self.image_paths[np.random.randint(0, self.length)]
+        path_fg = self.image_paths[np.random.randint(0, self.length)]
 
         ### fore-ground image loading
 
@@ -415,8 +415,8 @@ class DataCompositeGAN(Dataset):
         center_2_x_a = (x_2_1_a + x_2_2_a) / 2
         center_2_y_a = (y_2_1_a + y_2_2_a) / 2
 
-        shift_fg_x = np.random.randint(-5, 5)
-        shift_fg_y = np.random.randint(-5, 5)
+        shift_fg_x = np.random.randint(-10, 10)
+        shift_fg_y = np.random.randint(-10, 10)
 
         mask_fg_aff_all = F.affine(
             mask_fg_aff,
@@ -440,7 +440,7 @@ class DataCompositeGAN(Dataset):
         )
 
         if self.colorjitter:
-            if np.random.rand() < 0.6:
+            if np.random.rand() < 1:
                 # print("i love you one")
                 image_fg_aff_all = self.transform_color(image_fg_aff_all)
 
@@ -448,8 +448,8 @@ class DataCompositeGAN(Dataset):
 
         ## What we want to output? Background, im_composite, mask_fg_aff_all, real_image
 
-        shift_bg_x = np.random.randint(-5, 5)
-        shift_bg_y = np.random.randint(-5, 5)
+        shift_bg_x = np.random.randint(-10, 10)
+        shift_bg_y = np.random.randint(-10, 10)
 
         mask_bg_shift = F.affine(
             mask_bg,
@@ -487,7 +487,7 @@ class DataCompositeGAN(Dataset):
         im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
 
         if self.colorjitter:
-            if np.random.rand() < 0.6:
+            if np.random.rand() < 1:
                 # print("i love you two")
 
                 image_bg_augment_shift = self.transform_color(image_bg_augment_shift)
@@ -576,7 +576,9 @@ class PIHData_Composite(Dataset):
 
 
 class DataCompositeGAN_iharmony(Dataset):
-    def __init__(self, data_directory, ratio=1, augment=False, colorjitter=True):
+    def __init__(
+        self, data_directory, ratio=1, augment=False, colorjitter=True, return_raw=False
+    ):
         """
 
         Parameters
@@ -601,6 +603,7 @@ class DataCompositeGAN_iharmony(Dataset):
                 brightness=0.08, contrast=0.08, saturation=0.08, hue=0.02
             )
         self.augment = augment
+        self.return_raw = return_raw
 
     def __len__(self):
         return len(self.image_paths)
@@ -620,9 +623,9 @@ class DataCompositeGAN_iharmony(Dataset):
         Foreground
         """
 
-        path_fg = self.image_paths[index]  # ForeGround
+        path_bg = self.image_paths[index]  # ForeGround
 
-        path_bg = self.image_paths[np.random.randint(0, self.length)]
+        path_fg = self.image_paths[np.random.randint(0, self.length)]
 
         ### fore-ground image loading
 
@@ -722,62 +725,77 @@ class DataCompositeGAN_iharmony(Dataset):
 
         ## What we want to output? Background, im_composite, mask_fg_aff_all, real_image
 
-        shift_bg_x = np.random.randint(-10, 10)
-        shift_bg_y = np.random.randint(-10, 10)
+        if self.return_raw:
+            return (
+                self.transforms(image_bg_bg),
+                self.transforms(im_composite),
+                self.transforms_mask(mask_fg_aff_all),
+                self.transforms(image_bg),
+                self.transforms_mask(mask_bg),
+                self.transforms(image_bg_augment),
+                path_fg,
+                path_bg,
+            )
+        else:
 
-        mask_bg_shift = F.affine(
-            mask_bg,
-            angle=0,
-            translate=[
-                shift_bg_x,
-                shift_bg_y,
-            ],
-            scale=1,
-            shear=0,
-        )
+            shift_bg_x = np.random.randint(-10, 10)
+            shift_bg_y = np.random.randint(-10, 10)
 
-        image_bg_shift = F.affine(
-            image_bg,
-            angle=0,
-            translate=[
-                shift_bg_x,
-                shift_bg_y,
-            ],
-            scale=1,
-            shear=0,
-        )
+            mask_bg_shift = F.affine(
+                mask_bg,
+                angle=0,
+                translate=[
+                    shift_bg_x,
+                    shift_bg_y,
+                ],
+                scale=1,
+                shear=0,
+            )
 
-        image_bg_augment_shift = F.affine(
-            image_bg_augment,
-            angle=0,
-            translate=[
-                shift_bg_x,
-                shift_bg_y,
-            ],
-            scale=1,
-            shear=0,
-        )
+            image_bg_shift = F.affine(
+                image_bg,
+                angle=0,
+                translate=[
+                    shift_bg_x,
+                    shift_bg_y,
+                ],
+                scale=1,
+                shear=0,
+            )
 
-        im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
+            image_bg_augment_shift = F.affine(
+                image_bg_augment,
+                angle=0,
+                translate=[
+                    shift_bg_x,
+                    shift_bg_y,
+                ],
+                scale=1,
+                shear=0,
+            )
 
-        if self.colorjitter:
-            if np.random.rand() < 0.6:
-                # print("i love you two")
+            im_real = Image.composite(image_bg_shift, image_bg_bg, mask_bg_shift)
 
-                image_bg_augment_shift = self.transform_color(image_bg_augment_shift)
+            if self.colorjitter:
+                if np.random.rand() < 0.6:
+                    # print("i love you two")
 
-        im_real_augment = Image.composite(
-            image_bg_augment_shift, image_bg_bg, mask_bg_shift
-        )
+                    image_bg_augment_shift = self.transform_color(
+                        image_bg_augment_shift
+                    )
 
-        # Dataset output orders: 1. Background (inpainted) 2. Image Composite 3. Mask 4. Real Image
-        return (
-            self.transforms(image_bg_bg),
-            self.transforms(im_composite),
-            self.transforms_mask(mask_fg_aff_all),
-            self.transforms(im_real),
-            self.transforms_mask(mask_bg_shift),
-            self.transforms(im_real_augment),
-            path_fg,
-            path_bg,
-        )
+            im_real_augment = Image.composite(
+                image_bg_augment_shift, image_bg_bg, mask_bg_shift
+            )
+
+            # Dataset output orders: 1. Background (inpainted) 2. Image Composite 3. Mask 4. Real Image
+            return (
+                self.transforms(image_bg_bg),
+                self.transforms(im_composite),
+                self.transforms_mask(mask_fg_aff_all),
+                self.transforms(im_real),
+                self.transforms_mask(mask_bg_shift),
+                self.transforms(im_real_augment),
+                path_fg,
+                path_bg,
+            )

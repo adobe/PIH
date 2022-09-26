@@ -7,7 +7,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from dataset import DataCompositeGAN, DataCompositeGAN_iharmony
-from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
+from model import (
+    Model,
+    Model_Composite,
+    Model_UNet,
+    Model_Composite_PL,
+    Model_Composite_PL_NoBG,
+)
 from tqdm import tqdm
 from torch import Tensor
 import networks
@@ -359,7 +365,33 @@ def get_args():
         action="store_true",
         help="If specified, will only save g.",
     )
+    parser.add_option(
+        "--returnraw",
+        action="store_true",
+        help="If specified, will return raw",
+    )
+    parser.add_option(
+        "--twoinputs",
+        action="store_true",
+        help="If specified, will use only composite and mask as inputs",
+    )
+    parser.add_option(
+        "--depthmap",
+        action="store_true",
+        help="If specified, will use only composite and mask as inputs",
+    )
 
+    parser.add_option(
+        "--bgshadow",
+        action="store_true",
+        help="If specified, will use only composite and mask as inputs",
+    )
+
+    parser.add_option(
+        "--ibn",
+        action="store_true",
+        help="If specified, will use instance batch normalization",
+    )
     parser.add_option("--maskingcp", help="Directory for masking checkpoint")
     (options, args) = parser.parse_args()
     return options
@@ -383,6 +415,7 @@ class Trainer:
                 self.args.trainingratio,
                 augment=self.args.pairaugment,
                 colorjitter=self.args.colorjitter,
+                return_raw=self.args.returnraw,
             )
         else:
             self.dataset = DataCompositeGAN(
@@ -407,25 +440,49 @@ class Trainer:
             self.model = Model_UNet(input=self.args.inputdim)
         else:
             if self.args.piecewiselinear:
-                self.model = Model_Composite_PL(
-                    dim=self.args.pl_dim,
-                    sigmoid=(not self.args.nosigmoid),
-                    scaling=self.args.augreconweight,
-                    masking=self.args.masking,
-                    brush=self.args.brush,
-                    nosig=self.args.nosig,
-                    onlyupsample=self.args.onlyupsample,
-                    maskoffset=self.args.maskoffset,
-                    maskconvkernel=self.args.maskconvkernel,
-                    swap=self.args.swap,
-                    lut=self.args.lut,
-                    lutdim=self.args.lut_dim,
-                    joint=self.args.joint,
-                    PIHNet_bool=self.args.pihnetbool,
-                    Vit_bool=self.args.vitbool,
-                    Eff_bool=self.args.effbool,
-                    aggupsample=self.args.aggupsample,
-                )
+                if self.args.twoinputs:
+                    self.model = Model_Composite_PL_NoBG(
+                        dim=self.args.pl_dim,
+                        sigmoid=(not self.args.nosigmoid),
+                        scaling=self.args.augreconweight,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        lutdim=self.args.lut_dim,
+                        joint=self.args.joint,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                    )
+                else:
+                    self.model = Model_Composite_PL(
+                        dim=self.args.pl_dim,
+                        sigmoid=(not self.args.nosigmoid),
+                        scaling=self.args.augreconweight,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        lutdim=self.args.lut_dim,
+                        joint=self.args.joint,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                        depthmap=self.args.depthmap,
+                        bgshadow=self.args.bgshadow,
+                        ibn=self.args.ibn,
+                    )
             else:
                 if self.args.lut:
                     self.model = Model_Composite(
@@ -476,6 +533,11 @@ class Trainer:
         self.criterion_GAN = networks.GANLoss(
             "vanilla", gan_loss_mask=self.args.ganlossmask
         ).to(self.device)
+
+        if self.args.twoinputs:
+            print("Using 2 inputs, only composite and mask")
+        else:
+            print("Using 3 inputs, bg, composite and mask")
         if self.args.ganlossmask:
             print("Using GAN Loss Mask")
         else:
@@ -503,7 +565,7 @@ class Trainer:
 
         if self.args.scheduler:
             self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                self.optimizer, milestones=[10, 20, 30, 40, 50, 60], gamma=0.5
+                self.optimizer, milestones=[20, 40, 60], gamma=0.5
             )  # learning rate decay
             # print("current lr:",self.scheduler.get_lr())
 
@@ -521,7 +583,7 @@ class Trainer:
 
         if self.args.scheduler:
             self.scheduler_D = torch.optim.lr_scheduler.MultiStepLR(
-                self.optimizer_D, milestones=[10, 20, 30, 40, 50, 60], gamma=0.5
+                self.optimizer_D, milestones=[20, 40, 60], gamma=0.5
             )  # learning rate decay
             # print("current lr:",self.scheduler.get_lr())
 
@@ -683,16 +745,29 @@ class Trainer:
                         if self.args.augreconweight:
                             self.model.setscalor(random.uniform(0, 1))
 
-                        input_composite, output_composite, par1, par2 = self.model(
-                            image_bg_bg, im_real, mask_bg
-                        )
+                        if self.args.twoinputs:
+                            input_composite, output_composite, par1, par2 = self.model(
+                                im_real, mask_bg
+                            )
+                        else:
+                            input_composite, output_composite, par1, par2 = self.model(
+                                image_bg_bg, im_real, mask_bg
+                            )
+                        if self.args.twoinputs:
+                            (
+                                input_composite_aug,
+                                output_composite_aug,
+                                par1_aug,
+                                par2_aug,
+                            ) = self.model(im_real_augment, mask_bg)
+                        else:
 
-                        (
-                            input_composite_aug,
-                            output_composite_aug,
-                            par1_aug,
-                            par2_aug,
-                        ) = self.model(image_bg_bg, im_real_augment, mask_bg)
+                            (
+                                input_composite_aug,
+                                output_composite_aug,
+                                par1_aug,
+                                par2_aug,
+                            ) = self.model(image_bg_bg, im_real_augment, mask_bg)
 
                         # print(par2_aug.shape)
                     if self.args.reconwithgan:
@@ -900,6 +975,7 @@ class Trainer:
                                         .cpu()
                                         .clamp(0, 1)
                                     )
+
                                     image_gainmap.save(
                                         "/home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/temp_training/%s/%s_out_L1_aug_gain.jpg"
                                         % (self.args.tempdir, name)
@@ -1067,10 +1143,14 @@ class Trainer:
 
                         if self.args.augreconweight:
                             self.model.setscalor(random.uniform(0, 1))
-
-                        input_composite, output_composite, par1, par2 = self.model(
-                            image_bg_bg, im_composite, mask
-                        )
+                        if self.args.twoinputs:
+                            input_composite, output_composite, par1, par2 = self.model(
+                                im_composite, mask
+                            )
+                        else:
+                            input_composite, output_composite, par1, par2 = self.model(
+                                image_bg_bg, im_composite, mask
+                            )
 
                     brightness, contrast, saturation = par1
 

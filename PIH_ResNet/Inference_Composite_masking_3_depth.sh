@@ -7,6 +7,7 @@ echo mask offset: $4
 
 echo $5
 
+echo dim $6
 if [ $5 == realhm ]
 then
    a=File_for_testing_composite_realhm
@@ -23,6 +24,11 @@ then
 elif [ $5 == LRself ]
 then
    a=File_for_testing_composite_LR_self_2000
+
+
+elif [ $5 == self ]
+then
+   a=File_for_testing_self
 else
    a=0
 fi
@@ -50,7 +56,12 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/l
                                            --swap \
                                            --onlyupsample \
                                            --aggupsample \
-                                          --twoinputs \
+                                           --depthmap \
+                                           --dim $6 \
+					                            --bgshadow \
+                                           --ibn \
+                                          #  --depth \
+                                          # --twoinputs \
 
 
                                         #  --vitbool \

@@ -6,9 +6,18 @@ import torchvision.transforms.functional as F
 import torch.nn.functional as FN
 
 from resnet import resnet18, resnet34, PIHNet, VitNet, EffNetV2, resnet50
-
+from resnet_ibn import resnet50_ibn_b
 from unet.unet_model import UNet
 from unet_dis import UNet_mask
+
+########### ------------------ import Midas
+
+
+from torchvision.transforms import Compose
+from midas.dpt_depth import DPTDepthModel
+from midas.midas_net import MidasNet
+from midas.midas_net_custom import MidasNet_small
+from midas.transforms import Resize, NormalizeImage, PrepareForNet
 
 
 class LUT3D(torch.nn.Module):
@@ -356,6 +365,9 @@ class Model_Composite_PL(torch.nn.Module):
         Vit_bool=False,
         Eff_bool=False,
         aggupsample=False,
+        depthmap=False,
+        bgshadow=False,
+        ibn=False,
     ):
         super().__init__()
         self.dim = dim
@@ -363,10 +375,16 @@ class Model_Composite_PL(torch.nn.Module):
         self.lut = lut
         self.lutdim = lutdim
         self.joint = joint
-
+        self.depthmap = depthmap
         self.PIHNet_bool = PIHNet_bool
         self.Vit_bool = Vit_bool
         self.Eff_bool = Eff_bool
+        self.ibn = ibn
+        self.bgshadow = bgshadow
+        if bgshadow:
+            gainout = 2
+        else:
+            gainout = 1
 
         if self.PIHNet_bool:
             self.colornet = PIHNet
@@ -376,7 +394,9 @@ class Model_Composite_PL(torch.nn.Module):
             print("Using ViT!")
         elif self.Eff_bool:
             self.colornet = EffNetV2
-
+        elif self.ibn:
+            print("Using ResNet 50 with ibn")
+            self.colornet = resnet50_ibn_b
         else:
             self.colornet = resnet50
             print("Using ResNet!")
@@ -409,10 +429,14 @@ class Model_Composite_PL(torch.nn.Module):
                     sigmoid=sigmoid,
                 )
             else:
+                if self.depthmap:
+                    input_d = 8
+                else:
+                    input_d = 7
 
                 self.PL = self.colornet(
                     num_classes=self.dim * 3,
-                    input_f=7,
+                    input_f=input_d,
                     sigmoid=sigmoid,
                 )  ## Background - composite
 
@@ -422,8 +446,13 @@ class Model_Composite_PL(torch.nn.Module):
         self.maskoffset = maskoffset
         self.maskconvkernel = maskconvkernel
         if self.masking:
+            if self.depthmap:
+                input_unet_d = 11
+            else:
+                input_unet_d = 10
+
             self.gainnet = UNet_mask(
-                input_dim=10,
+                input_dim=input_unet_d,
                 Low_dim=True,
                 brush=brush,
                 nosig=nosig,
@@ -432,6 +461,16 @@ class Model_Composite_PL(torch.nn.Module):
                 maskconvkernel=maskconvkernel,
                 swap=swap,
                 aggupsample=aggupsample,
+                outputdim=gainout,
+            )
+        if self.depthmap:
+            self.depthnet = MidasNet(
+                "weights_midas/midas_v21-f6b98070.pt", non_negative=True
+            )
+            # net_w, net_h = 384, 384
+            self.depthtransforms = torch.nn.Sequential(
+                T.Resize((384, 384)),
+                T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
             )
 
     def Resnet_no_grad(self):
@@ -467,6 +506,22 @@ class Model_Composite_PL(torch.nn.Module):
             out: output images, of shape B x C x H x W
         """
         # On the device
+        if self.depthmap:
+            input_image_depth = self.depthtransforms(input_image)
+            with torch.no_grad():
+                input_image_depthmap = self.depthnet(input_image_depth)
+                input_image_depthmap = (
+                    (
+                        input_image_depthmap
+                        - torch.amin(input_image_depthmap, dim=(1, 2))[:, None, None]
+                    )
+                ) / (
+                    torch.amax(input_image_depthmap, dim=(1, 2))[:, None, None]
+                    - torch.amin(input_image_depthmap, dim=(1, 2))[:, None, None]
+                )
+                input_image_depthmap = T.Resize((512, 512))(input_image_depthmap)[
+                    :, None, ...
+                ]
         if self.masking:
             if self.scaling:
                 tensor_scalor = torch.ones_like(input_mask) * self.scalor
@@ -474,7 +529,12 @@ class Model_Composite_PL(torch.nn.Module):
                     (input_image, background, input_mask, tensor_scalor), 1
                 )
             else:
-                input_all = torch.cat((input_image, background, input_mask), 1)
+                if self.depthmap:
+                    input_all = torch.cat(
+                        (input_image, background, input_mask, input_image_depthmap), 1
+                    )
+                else:
+                    input_all = torch.cat((input_image, background, input_mask), 1)
             # input_all = torch.cat((input_image, background), 1)
             if self.joint:
 
@@ -524,15 +584,40 @@ class Model_Composite_PL(torch.nn.Module):
                 + (1 - input_mask) * background
             )
 
-            input_final = torch.cat(
-                (input_image, background, input_mask, pl_composite), 1
-            )
+            if self.depthmap:
+                input_final = torch.cat(
+                    (
+                        input_image,
+                        background,
+                        input_mask,
+                        input_image_depthmap,
+                        pl_composite,
+                    ),
+                    1,
+                )
+            else:
+                input_final = torch.cat(
+                    (input_image, background, input_mask, pl_composite), 1
+                )
 
-            self.output_final = self.gainnet(input_final)
-            output_results = (
-                pl_composite * self.output_final * input_mask
-                + (1 - input_mask) * background
-            )
+            self.output_final_org = self.gainnet(input_final)
+
+            if self.bgshadow:
+                self.output_final = self.output_final_org[:, 0, ...][:, None, ...]
+                self.output_bg_shadow = self.output_final_org[:, 1, ...][:, None, ...]
+                # print("whats up")
+                output_results = (
+                    pl_composite * self.output_final * input_mask
+                    + (1 - input_mask) * background * self.output_bg_shadow
+                )
+
+            else:
+                self.output_final = self.output_final_org
+
+                output_results = (
+                    pl_composite * self.output_final * input_mask
+                    + (1 - input_mask) * background
+                )
 
             return (
                 pl_composite,
@@ -638,3 +723,264 @@ class Model_UNet(torch.nn.Module):
             [a, a, a],
             [a, a, a],
         )
+
+
+class Model_Composite_PL_NoBG(torch.nn.Module):
+    def __init__(
+        self,
+        dim=32,
+        sigmoid=True,
+        scaling=False,
+        masking=False,
+        brush=False,
+        nosig=False,
+        onlyupsample=False,
+        maskoffset=0.5,
+        maskconvkernel=1,
+        swap=False,
+        lut=False,
+        lutdim=16,
+        joint=False,
+        PIHNet_bool=False,
+        Vit_bool=False,
+        Eff_bool=False,
+        aggupsample=False,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.scaling = scaling
+        self.lut = lut
+        self.lutdim = lutdim
+        self.joint = joint
+
+        self.PIHNet_bool = PIHNet_bool
+        self.Vit_bool = Vit_bool
+        self.Eff_bool = Eff_bool
+
+        if self.PIHNet_bool:
+            self.colornet = PIHNet
+            print("Using PIHNet!")
+        elif self.Vit_bool:
+            self.colornet = VitNet
+            print("Using ViT!")
+        elif self.Eff_bool:
+            self.colornet = EffNetV2
+
+        else:
+            self.colornet = resnet50
+            print("Using ResNet!")
+
+        if self.lut:
+            print("Using LUT")
+            print("lutdim: %d" % (self.lutdim))
+
+        if scaling:
+            if self.lut:
+                self.PL = resnet34(
+                    num_classes=3 * self.lutdim * self.lutdim * self.lutdim,
+                    input_f=8,
+                    sigmoid=sigmoid,
+                )
+
+            else:
+
+                self.PL = resnet34(
+                    num_classes=self.dim * 3,
+                    input_f=8,
+                    sigmoid=sigmoid,
+                )  ## Background - composite
+        else:
+
+            if self.lut:
+                self.PL = self.colornet(
+                    num_classes=3 * self.lutdim * self.lutdim * self.lutdim,
+                    input_f=7,
+                    sigmoid=sigmoid,
+                )
+            else:
+
+                self.PL = self.colornet(
+                    num_classes=self.dim * 3,
+                    input_f=4,
+                    sigmoid=sigmoid,
+                )  ## Background - composite
+
+        print("PLdim: %d" % (self.dim))
+        self.PL3D = LUT3D()
+        self.masking = masking
+        self.maskoffset = maskoffset
+        self.maskconvkernel = maskconvkernel
+        if self.masking:
+            self.gainnet = UNet_mask(
+                input_dim=7,
+                Low_dim=True,
+                brush=brush,
+                nosig=nosig,
+                onlyupsample=onlyupsample,
+                maskoffset=maskoffset,
+                maskconvkernel=maskconvkernel,
+                swap=swap,
+                aggupsample=aggupsample,
+            )
+
+    def Resnet_no_grad(self):
+        for param in self.PL.parameters():
+            param.requires_grad = False
+
+    def Resnet_with_grad(self):
+        for param in self.PL.parameters():
+            param.requires_grad = True
+
+    def setscalor(self, scalor):
+        """Using augmented recon weight
+
+        Args:
+            scalor (numpy float): generated scalor, from 0 to 5
+        """
+
+        self.scalor = scalor
+
+    def forward(self, input_image, input_mask):
+        """
+        Args:
+            lut: LUT to be applied, a 5-d tensor. First dimension is batch.
+                For a pixel of value (R, G, B), it maps it to
+                R' = lut[:, 0, B, G, R],
+                G' = lut[:, 1, B, G, R],
+                B' = lut[:, 2, B, G, R].
+                The "BGR" order is because torch.grid_sample assumes guide_map of
+                shape D x H x W, but the coord in grid is (x, y, z) , which is
+                (R, G, B) in our case.
+            img: input images, of shape B x C x H x W, in range [0, 1]
+        Returns:
+            out: output images, of shape B x C x H x W
+        """
+        # On the device
+        if self.masking:
+            if self.scaling:
+                tensor_scalor = torch.ones_like(input_mask) * self.scalor
+                input_all = torch.cat(
+                    (input_image, background, input_mask, tensor_scalor), 1
+                )
+            else:
+                input_all = torch.cat((input_image, input_mask), 1)
+            # input_all = torch.cat((input_image, background), 1)
+            if self.joint:
+
+                pl_table = self.PL(input_all)[0]
+
+            else:
+
+                with torch.no_grad():
+                    pl_table = self.PL(input_all)[0]
+
+            b_dim = pl_table.shape[0]
+
+            brightness = pl_table[0, 0]
+            contrast = pl_table[0, 1]
+            saturation = pl_table[0, 2]
+
+            if self.lut:
+
+                pl_table = torch.reshape(
+                    pl_table,
+                    (pl_table.shape[0], 3, self.lutdim, self.lutdim, self.lutdim),
+                )
+            else:
+
+                pl_table = torch.reshape(
+                    pl_table,
+                    (pl_table.shape[0], 3, self.dim),
+                )
+
+                pl_table = torch.cat(
+                    (
+                        pl_table[:, 0, None, None, :][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 1, None, :, None][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 2, :, None, None][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                    ),
+                    1,
+                )
+
+            pl_composite = (
+                self.PL3D(pl_table, input_image) * input_mask
+                + (1 - input_mask) * input_image
+            )
+
+            input_final = torch.cat((input_image, input_mask, pl_composite), 1)
+
+            self.output_final = self.gainnet(input_final)
+            output_results = (
+                pl_composite * self.output_final * input_mask
+                + (1 - input_mask) * input_image
+            )
+
+            return (
+                pl_composite,
+                output_results,
+                [brightness, contrast, saturation],
+                pl_table,
+            )
+        else:
+            if self.scaling:
+                tensor_scalor = torch.ones_like(input_mask) * self.scalor
+                input_all = torch.cat(
+                    (input_image, background, input_mask, tensor_scalor), 1
+                )
+            else:
+                input_all = torch.cat((input_image, input_mask), 1)
+            # input_all = torch.cat((input_image, background), 1)
+
+            pl_table = self.PL(input_all)[0]
+
+            b_dim = pl_table.shape[0]
+
+            brightness = pl_table[0, 0]
+            contrast = pl_table[0, 1]
+            saturation = pl_table[0, 2]
+
+            if self.lut:
+
+                pl_table = torch.reshape(
+                    pl_table,
+                    (pl_table.shape[0], 3, self.lutdim, self.lutdim, self.lutdim),
+                )
+            else:
+
+                pl_table = torch.reshape(
+                    pl_table,
+                    (pl_table.shape[0], 3, self.dim),
+                )
+
+                pl_table = torch.cat(
+                    (
+                        pl_table[:, 0, None, None, :][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 1, None, :, None][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 2, :, None, None][:, None, ...].expand(
+                            b_dim, 1, self.dim, self.dim, self.dim
+                        ),
+                    ),
+                    1,
+                )
+
+            pl_composite = (
+                self.PL3D(pl_table, input_image) * input_mask
+                + (1 - input_mask) * input_image
+            )
+
+            return (
+                pl_composite,
+                pl_composite,
+                [brightness, contrast, saturation],
+                pl_table,
+            )
