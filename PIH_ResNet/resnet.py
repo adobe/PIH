@@ -509,12 +509,16 @@ def resnet50(pretrained=False, input_f=4, num_classes=1000, sigmoid=False, **kwa
     return model
 
 
-def resnet101(pretrained=False, **kwargs):
+def resnet101(pretrained=False, input_f=4, num_classes=1000, sigmoid=False, **kwargs):
     """Constructs a ResNet-101 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
+    # print("Using Resnet 101")
+    model = ResNet(Bottleneck, [3, 4, 23, 3],         
+                   num_classes=num_classes,
+                   input_f=input_f,
+                   sigmoid=sigmoid, **kwargs)
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls["resnet101"]))
     return model

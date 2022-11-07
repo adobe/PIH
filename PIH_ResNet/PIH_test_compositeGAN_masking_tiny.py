@@ -7,7 +7,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from dataset import PIHData, PIHDataNGT, IhdDataset, PIHData_Composite
-from model import Model, Model_Composite, Model_UNet, Model_Composite_PL
+from model import (
+    Model,
+    Model_Composite,
+    Model_UNet,
+    Model_Composite_PL,
+    Model_Composite_PL_NoBG,
+)
 from tqdm import tqdm
 from torch import Tensor
 import matplotlib.pyplot as plt
@@ -97,6 +103,108 @@ def get_args():
         help="If specified, will not piecewiselinear.",
     )
 
+    parser.add_option(
+        "--masking",
+        action="store_true",
+        help="If specified, will using masking.",
+    )
+
+    parser.add_option(
+        "--brush",
+        action="store_true",
+        help="If specified, will using brush.",
+    )
+    parser.add_option(
+        "--nosig",
+        action="store_true",
+        help="If specified, will using nosig.",
+    )
+    parser.add_option(
+        "--onlyupsample",
+        action="store_true",
+        help="If specified, will only use upsampling.",
+    )
+
+    parser.add_option(
+        "--aggupsample",
+        action="store_true",
+        help="If specified, will only use agg upsampling.",
+    )
+
+    parser.add_option(
+        "--maskconvkernel",
+        default=1,
+        type="int",
+        help="maskconvkernel.",
+    )
+
+    parser.add_option(
+        "--dim",
+        default=32,
+        type="int",
+        help="maskconvkernel.",
+    )
+    parser.add_option(
+        "--maskoffset",
+        default=0.5,
+        type="float",
+        help="maskoffset.",
+    )
+    parser.add_option(
+        "--swap",
+        action="store_true",
+        help="If specified, will only use upsampling.",
+    )
+    parser.add_option(
+        "--pihnetbool",
+        action="store_true",
+        help="If specified, will use pihnet.",
+    )
+
+    parser.add_option(
+        "--vitbool",
+        action="store_true",
+        help="If specified, will use pihnet.",
+    )
+
+    parser.add_option(
+        "--effbool",
+        action="store_true",
+        help="If specified, will use efficientnet v2 - s.",
+    )
+
+    parser.add_option(
+        "--twoinputs",
+        action="store_true",
+        help="If specified, will use two inputs.",
+    )
+    parser.add_option(
+        "--depthmap",
+        action="store_true",
+        help="If specified, will depthmap.",
+    )
+    parser.add_option(
+        "--bgshadow",
+        action="store_true",
+        help="If specified, will use bgshadow.",
+    )
+
+    parser.add_option(
+        "--ibn",
+        action="store_true",
+        help="If specified, will use ibn.",
+    )
+    parser.add_option(
+        "--dual",
+        action="store_true",
+        help="If specified, will use ibn.",
+    )
+    parser.add_option(
+        "--lowres",
+        action="store_true",
+        help="If specified, will lowres.",
+    )
+
     (options, args) = parser.parse_args()
     return options
 
@@ -120,9 +228,16 @@ class Evaluater:
         os.makedirs(self.tmp, exist_ok=True)
         os.makedirs(self.tmp + "/mask/", exist_ok=True)
         os.makedirs(self.tmp + "/original/", exist_ok=True)
-        # os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
+        os.makedirs(self.tmp + "/intermediate/", exist_ok=True)
         os.makedirs(self.tmp + "/results/", exist_ok=True)
         os.makedirs(self.tmp + "/bg/", exist_ok=True)
+        if self.args.masking:
+            os.makedirs(self.tmp + "/gainmap/", exist_ok=True)
+            if self.args.bgshadow:
+                os.makedirs(self.tmp + "/bgshadow/", exist_ok=True)
+            if self.args.depthmap:
+                os.makedirs(self.tmp + "/dp/", exist_ok=True)
+
         if self.args.piecewiselinear:
             os.makedirs(self.tmp + "/curves/", exist_ok=True)
 
@@ -141,7 +256,7 @@ class Evaluater:
                     self.dataset = PIHDataNGT(self.args.datadir, device=self.device)
             else:
                 if self.args.composite:
-                    self.dataset = PIHData_Composite(self.args.datadir)
+                    self.dataset = PIHData_Composite(self.args.datadir, lowres=self.args.lowres)
                 else:
                     self.dataset = PIHData(self.args.datadir, device=self.device)
 
@@ -157,7 +272,50 @@ class Evaluater:
         if self.args.composite:
 
             if self.args.piecewiselinear:
-                self.model = Model_Composite_PL(dim=32, lut=self.args.lut)
+                if self.args.twoinputs:
+                    self.model = Model_Composite_PL_NoBG(
+                        dim=self.args.dim,
+                        sigmoid=True,
+                        scaling=False,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        lutdim=self.args.lut_dim,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                        lowres=self.args.lowres,
+                    )
+                else:
+                    self.model = Model_Composite_PL(
+                        dim=self.args.dim,
+                        sigmoid=True,
+                        scaling=False,
+                        masking=self.args.masking,
+                        brush=self.args.brush,
+                        nosig=self.args.nosig,
+                        onlyupsample=self.args.onlyupsample,
+                        maskoffset=self.args.maskoffset,
+                        maskconvkernel=self.args.maskconvkernel,
+                        swap=self.args.swap,
+                        lut=self.args.lut,
+                        PIHNet_bool=self.args.pihnetbool,
+                        Vit_bool=self.args.vitbool,
+                        Eff_bool=self.args.effbool,
+                        aggupsample=self.args.aggupsample,
+                        depthmap=self.args.depthmap,
+                        bgshadow=self.args.bgshadow,
+                        ibn=self.args.ibn,
+                        dual=self.args.dual,
+                        lowres=self.args.lowres,
+                        lutdim=self.args.lut_dim,
+                    )
 
             else:
                 if self.args.unet:
@@ -216,9 +374,14 @@ class Evaluater:
                         input_composite, input_mask, input_bg
                     )
                 else:
-                    inter_composite, output_composite, par1, par2 = self.model(
-                        input_bg, input_composite, input_mask
-                    )
+                    if self.args.twoinputs:
+                        inter_composite, output_composite, par1, par2 = self.model(
+                            input_composite, input_mask
+                        )
+                    else:
+                        inter_composite, output_composite, par1, par2 = self.model(
+                            input_bg, input_composite, input_mask
+                        )
 
             brightness, contrast, saturation = par1
             b_r, b_g, b_b = par1
@@ -245,51 +408,43 @@ class Evaluater:
 
             for kk in range(self.args.batchsize):
 
-                name_image = names[0].split("/")[-1]
+                name_image = names[0].split("/")[-1].replace('jpg','png')
 
-                if self.args.piecewiselinear:
-                    curves = par2.cpu().detach().numpy()
+                # if self.args.piecewiselinear:
+                #     curves = par2.cpu().detach().numpy()
 
-                    red_curve = curves[0, 0, 0, 0, :]
-                    green_curve = curves[0, 1, 0, :, 0]
-                    blue_curve = curves[0, 2, :, 0, 0]
+                #     red_curve = curves[0, 0, 0, 0, :]
+                #     green_curve = curves[0, 1, 0, :, 0]
+                #     blue_curve = curves[0, 2, :, 0, 0]
 
+                #     x = np.linspace(0,1,red_curve.shape[0])
+                #     plt.figure(figsize=(6,6))
+                #     plt.rcParams["font.family"] = "Times New Roman"
+                #     ax = plt.subplot(111)
+                #     ax.plot(x,red_curve,color='r',lw=2)
+                #     ax.plot(x,green_curve,color='g',lw=2)
+                #     ax.plot(x,blue_curve,color='b',lw=2)
+                #     ax.spines.right.set_visible(False)
+                #     ax.spines.top.set_visible(False)
+                #     ax.set_xticks([0,1])
+                #     ax.set_xticklabels([0,1], fontsize=24 )
+                #     ax.set_yticks([0,1])
+                #     ax.set_yticklabels([0,1], fontsize=24 )
+                #     [x.set_linewidth(2) for x in ax.spines.values()]
+                #     leg = ax.legend(["Red","Green","Blue"], fontsize=24)
+                #     leg.get_frame().set_linewidth(0.0)
+                #     plt.savefig(self.tmp + "/curves/%s" % (name_image),dpi=300,bbox_inches='tight',transparent=True)
 
-                    x = np.linspace(0,1,32)
-                    plt.figure(figsize=(6,6))
-                    ax = plt.subplot(111)
-                    ax.plot(x,red_curve,color='r',lw=2)
-                    ax.plot(x,green_curve,color='g',lw=2)
-                    ax.plot(x,blue_curve,color='b',lw=2)
-                    ax.spines.right.set_visible(False)
-                    ax.spines.top.set_visible(False)
-                    ax.set_xticks([0,1])
-                    ax.set_xticklabels([0,1], fontsize=20 )
-                    ax.set_yticks([0,1])
-                    ax.set_yticklabels([0,1], fontsize=20 )
-                    [x.set_linewidth(2) for x in ax.spines.values()]
-                    plt.savefig(self.tmp + "/curves/%s" % (name_image),dpi=300,bbox_inches='tight',transparent=True)
-
-
-                    # plt.figure()
-                    # plt.plot(red_curve, "r")
-                    # plt.plot(green_curve, "g")
-                    # plt.plot(blue_curve, "b")
-                    # plt.ylim(0, 1)
-                    # plt.legend(["Reg", "Green", "Blue"])
-                    # plt.title("Learned Color Curves")
-
-                    # plt.savefig(self.tmp + "/curves/%s" % (name_image))
-                    # plt.close()
+                #     plt.close()
 
                 image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 image_all.save(self.tmp + "/results/%s" % (name_image))
 
-                image_mk = T.ToPILImage()(input_mask[kk, ...].cpu())
-                image_mk.save(self.tmp + "/mask/%s" % (name_image))
+                # image_mk = T.ToPILImage()(input_mask[kk, ...].cpu())
+                # image_mk.save(self.tmp + "/mask/%s" % (name_image))
 
-                # image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
-                # image_i.save(self.tmp + "/intermediate/%s" % (name_image))
+                image_i = T.ToPILImage()(inter_composite[kk, ...].cpu())
+                image_i.save(self.tmp + "/intermediate/%s" % (name_image))
 
                 if not self.args.ngt:
                     image_gt = T.ToPILImage()(input_real[kk, ...].cpu())
@@ -298,8 +453,38 @@ class Evaluater:
                 image_og = T.ToPILImage()(input_composite[kk, ...].cpu())
                 image_og.save(self.tmp + "/original/%s" % (name_image))
 
-                image_bg = T.ToPILImage()(input_bg[kk, ...].cpu())
-                image_bg.save(self.tmp + "/bg/%s" % (name_image))
+                # image_bg = T.ToPILImage()(input_bg[kk, ...].cpu())
+                # image_bg.save(self.tmp + "/bg/%s" % (name_image))
+
+                # if self.args.masking:
+                #     image_gainmap = T.ToPILImage()(
+                #         self.model.output_final[kk, ...].cpu()
+                #         * input_mask[kk, ...].cpu()
+                #     )
+                #     image_gainmap.save(self.tmp + "/gainmap/%s" % (name_image))
+
+                #     if self.args.depthmap:
+                #         image_dp = T.ToPILImage()(
+                #             self.model.input_image_depthmap[kk, ...].cpu()
+                #         )
+
+                #         # print("max:", self.model.output_bg_shadow[kk, ...].cpu().max())
+                #         # print("min:", self.model.output_bg_shadow[kk, ...].cpu().min())
+
+                #         image_dp.save(self.tmp + "/dp/%s" % (name_image))
+
+                #     if self.args.bgshadow:
+                #         # output_bg_shadow
+
+                #         image_bgshadow = T.ToPILImage()(
+                #             self.model.output_bg_shadow[kk, ...].cpu()
+                #             * (1 - input_mask[kk, ...].cpu())
+                #         )
+
+                #         print("max:", self.model.output_bg_shadow[kk, ...].cpu().max())
+                #         print("min:", self.model.output_bg_shadow[kk, ...].cpu().min())
+
+                #         image_bgshadow.save(self.tmp + "/bgshadow/%s" % (name_image))
 
                 # image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
                 # image_all.save(self.tmp + "/tmp%d_%d.jpg" % (index, kk))

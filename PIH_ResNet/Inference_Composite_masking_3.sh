@@ -28,6 +28,17 @@ then
 elif [ $5 == self ]
 then
    a=File_for_testing_self
+
+
+elif [ $5 == adobe ]
+then
+   a=File_for_testing_composite_adobereal
+
+elif [ $5 == realself ]
+then
+   a=File_for_testing_composite_realself
+
+
 else
    a=0
 fi
@@ -55,6 +66,15 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/l
                                            --swap \
                                            --onlyupsample \
                                            --aggupsample \
+                                           --dim 32 \
+                                          #  --lut \
+                                          #  --lut-dim 16 \
+                                          #  --lowres \
+                                          #  --vitbool \
+                                          #  --ibn \
+                                          #  --effbool \
+                                          #  --ibn \
+                                          #  --vitbool \
                                           #  --ibn \
 #                                           --bgshadow \
                                           # --twoinputs \

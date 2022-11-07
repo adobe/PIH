@@ -7,7 +7,6 @@ echo mask offset: $4
 
 echo $5
 
-echo dim $6
 if [ $5 == realhm ]
 then
    a=File_for_testing_composite_realhm
@@ -25,20 +24,19 @@ elif [ $5 == LRself ]
 then
    a=File_for_testing_composite_LR_self_2000
 
-elif [ $5 == adobe ]
+
+elif [ $5 == self ]
 then
-   a=File_for_testing_composite_adobereal
+   a=File_for_testing_self
 
 elif [ $5 == realself ]
 then
    a=File_for_testing_composite_realself
 
-
-
-
-elif [ $5 == self ]
+elif [ $5 == adobe ]
 then
-   a=File_for_testing_self
+   a=File_for_testing_composite_adobereal
+
 else
    a=0
 fi
@@ -51,7 +49,7 @@ mkdir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/resul
 # /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_composite_realhm/
 #  /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/File_for_testing_composite_LR_self_2000/
 
-CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/localssd/$a \
+CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/$a \
                                            -g 0 \
                                            --checkpoints $1 \
                                            --tmp_results /home/kewang/sensei-fs-symlink/users/kewang/projects/data_processing/results_images/$2/results_testing/ \
@@ -61,22 +59,19 @@ CUDA_VISIBLE_DEVICES=$3 python PIH_test_compositeGAN_masking.py --datadir /mnt/l
                                            --nocurve \
                                            --piecewiselinear \
                                            --masking \
-                                           --brush \
                                            --maskoffset $4 \
                                            --swap \
-                                           --onlyupsample \
-                                           --aggupsample \
-                                           --depthmap \
-                                           --dim $6 \
-					                            --bgshadow \
-                                           --dual \
-                                          #  --ibn \
-                                          #  --effbool \
-                                          # --twoinputs \
+                                           --twoinputs \
+                                           --dim 64 \
+                                          #  --lut \
+                                          #  --lut-dim 24 \
+                                          # --effbool \
 
-                                          #  --ibn \
-                                          #  --depth \
-                                          # --twoinputs \
+                                          # --lowres \
+                                          # --effbool \
+                                          # --dim 64 \
+                                          # --lut \
+                                          # --lut-dim 16 \
 
 
                                         #  --vitbool \

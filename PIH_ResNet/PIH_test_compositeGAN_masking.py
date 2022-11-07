@@ -194,6 +194,16 @@ def get_args():
         action="store_true",
         help="If specified, will use ibn.",
     )
+    parser.add_option(
+        "--dual",
+        action="store_true",
+        help="If specified, will use ibn.",
+    )
+    parser.add_option(
+        "--lowres",
+        action="store_true",
+        help="If specified, will lowres.",
+    )
 
     (options, args) = parser.parse_args()
     return options
@@ -225,6 +235,8 @@ class Evaluater:
             os.makedirs(self.tmp + "/gainmap/", exist_ok=True)
             if self.args.bgshadow:
                 os.makedirs(self.tmp + "/bgshadow/", exist_ok=True)
+            if self.args.depthmap:
+                os.makedirs(self.tmp + "/dp/", exist_ok=True)
 
         if self.args.piecewiselinear:
             os.makedirs(self.tmp + "/curves/", exist_ok=True)
@@ -244,7 +256,7 @@ class Evaluater:
                     self.dataset = PIHDataNGT(self.args.datadir, device=self.device)
             else:
                 if self.args.composite:
-                    self.dataset = PIHData_Composite(self.args.datadir)
+                    self.dataset = PIHData_Composite(self.args.datadir, lowres=self.args.lowres)
                 else:
                     self.dataset = PIHData(self.args.datadir, device=self.device)
 
@@ -273,10 +285,12 @@ class Evaluater:
                         maskconvkernel=self.args.maskconvkernel,
                         swap=self.args.swap,
                         lut=self.args.lut,
+                        lutdim=self.args.lut_dim,
                         PIHNet_bool=self.args.pihnetbool,
                         Vit_bool=self.args.vitbool,
                         Eff_bool=self.args.effbool,
                         aggupsample=self.args.aggupsample,
+                        lowres=self.args.lowres,
                     )
                 else:
                     self.model = Model_Composite_PL(
@@ -298,6 +312,9 @@ class Evaluater:
                         depthmap=self.args.depthmap,
                         bgshadow=self.args.bgshadow,
                         ibn=self.args.ibn,
+                        dual=self.args.dual,
+                        lowres=self.args.lowres,
+                        lutdim=self.args.lut_dim,
                     )
 
             else:
@@ -391,7 +408,7 @@ class Evaluater:
 
             for kk in range(self.args.batchsize):
 
-                name_image = names[0].split("/")[-1]
+                name_image = names[0].split("/")[-1].replace('jpg','png')
 
                 if self.args.piecewiselinear:
                     curves = par2.cpu().detach().numpy()
@@ -400,15 +417,24 @@ class Evaluater:
                     green_curve = curves[0, 1, 0, :, 0]
                     blue_curve = curves[0, 2, :, 0, 0]
 
-                    plt.figure()
-                    plt.plot(red_curve, "r")
-                    plt.plot(green_curve, "g")
-                    plt.plot(blue_curve, "b")
-                    plt.ylim(0, 1)
-                    plt.legend(["Reg", "Green", "Blue"])
-                    plt.title("Learned Color Curves")
+                    x = np.linspace(0,1,red_curve.shape[0])
+                    plt.figure(figsize=(6,6))
+                    # plt.rcParams["font.family"] = "Times New Roman"
+                    ax = plt.subplot(111)
+                    ax.plot(x,red_curve,color='r',lw=2)
+                    ax.plot(x,green_curve,color='g',lw=2)
+                    ax.plot(x,blue_curve,color='b',lw=2)
+                    ax.spines.right.set_visible(False)
+                    ax.spines.top.set_visible(False)
+                    ax.set_xticks([0,1])
+                    ax.set_xticklabels([0,1], fontsize=24 )
+                    ax.set_yticks([0,1])
+                    ax.set_yticklabels([0,1], fontsize=24 )
+                    [x.set_linewidth(2) for x in ax.spines.values()]
+                    leg = ax.legend(["Red","Green","Blue"], fontsize=24)
+                    leg.get_frame().set_linewidth(0.0)
+                    plt.savefig(self.tmp + "/curves/%s" % (name_image),dpi=300,bbox_inches='tight',transparent=True)
 
-                    plt.savefig(self.tmp + "/curves/%s" % (name_image))
                     plt.close()
 
                 image_all = T.ToPILImage()(output_composite[kk, ...].cpu())
@@ -436,6 +462,16 @@ class Evaluater:
                         * input_mask[kk, ...].cpu()
                     )
                     image_gainmap.save(self.tmp + "/gainmap/%s" % (name_image))
+
+                    if self.args.depthmap:
+                        image_dp = T.ToPILImage()(
+                            self.model.input_image_depthmap[kk, ...].cpu()
+                        )
+
+                        # print("max:", self.model.output_bg_shadow[kk, ...].cpu().max())
+                        # print("min:", self.model.output_bg_shadow[kk, ...].cpu().min())
+
+                        image_dp.save(self.tmp + "/dp/%s" % (name_image))
 
                     if self.args.bgshadow:
                         # output_bg_shadow

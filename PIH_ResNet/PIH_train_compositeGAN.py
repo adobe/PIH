@@ -392,6 +392,24 @@ def get_args():
         action="store_true",
         help="If specified, will use instance batch normalization",
     )
+    parser.add_option(
+        "--dual",
+        action="store_true",
+        help="If specified, will use dual gainmaps",
+    )
+    parser.add_option(
+        "--nosubmask",
+        action="store_true",
+        help="If specified, will use dual gainmaps",
+    )
+    
+    
+    parser.add_option(
+        "--lowres",
+        action="store_true",
+        help="If specified, will use low res for training",
+    )
+
     parser.add_option("--maskingcp", help="Directory for masking checkpoint")
     (options, args) = parser.parse_args()
     return options
@@ -416,6 +434,7 @@ class Trainer:
                 augment=self.args.pairaugment,
                 colorjitter=self.args.colorjitter,
                 return_raw=self.args.returnraw,
+                lowres=self.args.lowres,
             )
         else:
             self.dataset = DataCompositeGAN(
@@ -423,6 +442,8 @@ class Trainer:
                 self.args.trainingratio,
                 augment=self.args.pairaugment,
                 colorjitter=self.args.colorjitter,
+                lowres=self.args.lowres,
+                return_raw=self.args.returnraw,
             )
 
         self.dataloader = DataLoader(
@@ -459,6 +480,7 @@ class Trainer:
                         Vit_bool=self.args.vitbool,
                         Eff_bool=self.args.effbool,
                         aggupsample=self.args.aggupsample,
+                        lowres=self.args.lowres,
                     )
                 else:
                     self.model = Model_Composite_PL(
@@ -482,6 +504,8 @@ class Trainer:
                         depthmap=self.args.depthmap,
                         bgshadow=self.args.bgshadow,
                         ibn=self.args.ibn,
+                        dual=self.args.dual,
+                        lowres=self.args.lowres,
                     )
             else:
                 if self.args.lut:
@@ -515,6 +539,7 @@ class Trainer:
                         input_dim=self.args.inputdimD,
                         Low_dim=self.args.lowdim,
                         lessskip=self.args.lessskip,
+                        lowres=self.args.lowres,
                     )
             else:
                 self.model_D = networks.define_D(3, 64, "n_layers", 3)
@@ -632,7 +657,7 @@ class Trainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         self.load_matched_state_dict(self.model, checkpoint["state_dict"])
-        self.model.Resnet_no_grad()
+        # self.model.Resnet_no_grad()
 
     def restore_model(self):
         """Restore latest model checkpoint (if any) and continue training from there."""
@@ -831,7 +856,7 @@ class Trainer:
                             # print("Real_label mean: %f  Fake label mean: %f"%(pred_real.mean(),pred_fake.mean()))
                             if self.args.ganlossmask:
                                 loss_D_real = self.criterion_GAN(
-                                    pred_real, True, mask=mask
+                                    pred_real, True, mask=mask_bg
                                 )
                             else:
                                 loss_D_real = self.criterion_GAN(pred_real, True)
@@ -885,13 +910,42 @@ class Trainer:
                         pred_fake = self.model_D(fake_AB)
                         if self.args.ganlossmask:
 
-                            loss_G_adv = self.criterion_GAN(pred_fake, True, mask=mask)
+                            loss_G_adv = self.criterion_GAN(
+                                pred_fake, True, mask=mask_bg
+                            )
                         else:
                             loss_G_adv = self.criterion_GAN(pred_fake, True)
 
-                        loss_l1 = self.reconloss(output_composite_aug, im_real)
+                        # loss_l1 = self.reconloss(output_composite_aug, im_real)
                         if self.args.purepairaugment:
-                            loss_l1 = self.reconloss(output_composite_aug, im_real)
+                            if self.args.bgshadow:
+                                print("haha")
+                                if self.args.nosubmask:
+
+                                    loss_l1 = self.reconloss(
+                                        output_composite_aug, im_real
+                                    )
+                                else:
+
+                                    loss_l1 = self.reconloss(
+                                        output_composite_aug * mask_bg,
+                                        im_real * mask_bg,
+                                    )
+                                print("l1", loss_l1)
+                                print(
+                                    "l1_raw",
+                                    self.reconloss(output_composite_aug, im_real),
+                                )
+                                print(
+                                    "l1_mk",
+                                    self.reconloss(
+                                        output_composite_aug * mask_bg,
+                                        im_real * mask_bg,
+                                    ),
+                                )
+
+                            else:
+                                loss_l1 = self.reconloss(output_composite_aug, im_real)
                         else:
                             loss_l1 = 1 * self.reconloss(
                                 output_composite, im_real
@@ -920,6 +974,8 @@ class Trainer:
                             loss_G_all = (
                                 1 - self.args.reconweight
                             ) * loss_G_adv + self.args.reconweight * loss_l1
+
+                        # print("all", loss_G_all)
 
                         loss_G_all.backward()
 
