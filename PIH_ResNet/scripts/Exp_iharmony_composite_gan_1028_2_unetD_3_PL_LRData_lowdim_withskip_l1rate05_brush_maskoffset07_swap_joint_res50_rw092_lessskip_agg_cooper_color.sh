@@ -1,19 +1,19 @@
 #!/bin/bash
 
 # Network hyperparameters
-device=0
-lr=1e-5
-lrd=1e-5
+device=2
+lr=6e-5
+lrd=6e-5
 batch_size=8
-date=20220821_a100_0_unetD_3_no_skip_resnet_maskinput_pl64_gan_loss_mask_lowdim_L105_reconwithgan_4_brush_offset06_swap_joint_vitnet
+date=20221028_a100_2_maskinput_pl32_L105_reconwithgan_092_brush_offset05_scheduler_color
 reconweight=None
 training_ratio=1
 lutdim=16
 inputdimD=3
 recon_ratio=0.5
-recon_weight=6 ## Used here
+recon_weight=0.92 ## Used here
 
-name=iharmony_compositegan_D_${inputdimD}_ratio_${training_ratio}_noskip_PL32_reconratio_${recon_ratio}_reconweight_${recon_weight}
+name=iharmony_${inputdimD}_ratio_${training_ratio}_${recon_ratio}_reconweight_${recon_weight}
 
 model_name=exp_${date}_batch_size_$((batch_size))_lr_${lr}_${name}_device_${device}
 
@@ -37,7 +37,6 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --trainingratio ${training_ratio} \
                        --unetd \
                        --inputdimD ${inputdimD} \
-                       --unetdnoskip \
                        --nocurve \
                        --reconratio ${recon_ratio} \
                        --piecewiselinear \
@@ -50,10 +49,13 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --reconweight ${recon_weight} \
                        --masking \
                        --brush \
-                       --maskoffset 0.6 \
+                       --maskoffset 0.5 \
                        --swap \
+                       --onlyupsample \
                        --joint \
-                       --vitbool \
+                       --lessskip \
+                       --aggupsample \
+                       --scheduler \
                        --colorjitter \
 
                        

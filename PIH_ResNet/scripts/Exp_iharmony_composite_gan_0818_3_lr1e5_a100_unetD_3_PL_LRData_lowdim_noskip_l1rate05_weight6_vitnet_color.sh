@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Network hyperparameters
-device=0
+device=3
 lr=1e-5
 lrd=1e-5
 batch_size=8
-date=20220821_a100_0_unetD_3_no_skip_resnet_maskinput_pl64_gan_loss_mask_lowdim_L105_reconwithgan_4_brush_offset06_swap_joint_vitnet
+date=20220821_a100_3_unetD_3_no_skip_resnet_maskinput_pl64_gan_loss_mask_lowdim_L105_reconwithgan_vitnet_color
 reconweight=None
 training_ratio=1
 lutdim=16
@@ -48,11 +48,6 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --ganlossmask \
                        --reconwithgan \
                        --reconweight ${recon_weight} \
-                       --masking \
-                       --brush \
-                       --maskoffset 0.6 \
-                       --swap \
-                       --joint \
                        --vitbool \
                        --colorjitter \
 

@@ -1,17 +1,17 @@
 #!/bin/bash
 
 # Network hyperparameters
-device=0
-lr=1e-5
-lrd=1e-5
+device=6
+lr=4e-5
+lrd=4e-5
 batch_size=8
-date=20220821_a100_0_unetD_3_no_skip_resnet_maskinput_pl64_gan_loss_mask_lowdim_L105_reconwithgan_4_brush_offset06_swap_joint_vitnet
+date=20220829_a100_6_unetD_3_with_skip_resnet_maskinput_pl32_gan_loss_mask_lowdim_L10_reconwithgan_0_resnet50_32
 reconweight=None
 training_ratio=1
 lutdim=16
 inputdimD=3
-recon_ratio=0.5
-recon_weight=6 ## Used here
+recon_ratio=0
+recon_weight=0 ## Used here
 
 name=iharmony_compositegan_D_${inputdimD}_ratio_${training_ratio}_noskip_PL32_reconratio_${recon_ratio}_reconweight_${recon_weight}
 
@@ -37,24 +37,21 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --trainingratio ${training_ratio} \
                        --unetd \
                        --inputdimD ${inputdimD} \
-                       --unetdnoskip \
                        --nocurve \
                        --reconratio ${recon_ratio} \
                        --piecewiselinear \
-                       --pl-dim 64 \
+                       --pl-dim 32 \
                        --pairaugment \
                        --purepairaugment \
                        --lowdim \
                        --ganlossmask \
                        --reconwithgan \
                        --reconweight ${recon_weight} \
-                       --masking \
-                       --brush \
-                       --maskoffset 0.6 \
-                       --swap \
-                       --joint \
-                       --vitbool \
-                       --colorjitter \
+                       # --masking \
+                       # --brush \
+                       # --maskoffset 0.7 \
+                       # --swap \
+                       # --joint \
 
                        
 

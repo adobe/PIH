@@ -1,24 +1,24 @@
 #!/bin/bash
 
 # Network hyperparameters
-device=0
-lr=1e-5
-lrd=1e-5
-batch_size=8
-date=20220821_a100_0_unetD_3_no_skip_resnet_maskinput_pl64_gan_loss_mask_lowdim_L105_reconwithgan_4_brush_offset06_swap_joint_vitnet
+device=3
+lr=4e-5
+lrd=4e-5
+batch_size=16
+date=20221013_a100_3_raw_lowdim_L1_reconwithgan_094_brush_offset075_upsample_lessskip_agg_Ihd_composite_all_scheduler_lowres
 reconweight=None
 training_ratio=1
 lutdim=16
 inputdimD=3
-recon_ratio=0.5
-recon_weight=6 ## Used here
+recon_ratio=1
+recon_weight=1 ## Used here
 
-name=iharmony_compositegan_D_${inputdimD}_ratio_${training_ratio}_noskip_PL32_reconratio_${recon_ratio}_reconweight_${recon_weight}
+name=iharmony_${inputdimD}_ratio_${training_ratio}_${recon_ratio}_reconweight_${recon_weight}
 
 model_name=exp_${date}_batch_size_$((batch_size))_lr_${lr}_${name}_device_${device}
 
 # Set folder names
-dir_data=/mnt/localssd/LR_data/train/
+dir_data=/mnt/localssd/Ihd_composite_all/train/
 dir_log=/home/kewang/sensei-fs-symlink/users/kewang/projects/PIH/PIH_ResNet/results/$model_name
 
 
@@ -33,15 +33,14 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --force_train_from_scratch \
                        --tempdir \
                        $model_name \
-                       --workers 8 \
+                       --workers 16 \
                        --trainingratio ${training_ratio} \
                        --unetd \
                        --inputdimD ${inputdimD} \
-                       --unetdnoskip \
                        --nocurve \
                        --reconratio ${recon_ratio} \
                        --piecewiselinear \
-                       --pl-dim 64 \
+                       --pl-dim 32 \
                        --pairaugment \
                        --purepairaugment \
                        --lowdim \
@@ -50,12 +49,17 @@ CUDA_VISIBLE_DEVICES=$device python PIH_train_compositeGAN.py --datadir $dir_dat
                        --reconweight ${recon_weight} \
                        --masking \
                        --brush \
-                       --maskoffset 0.6 \
+                       --maskoffset 0.75 \
                        --swap \
+                       --onlyupsample \
                        --joint \
-                       --vitbool \
-                       --colorjitter \
-
+                       --lessskip \
+                       --aggupsample \
+                       --iharmdata \
+                       --scheduler \
+                       --returnraw \
+                       --twoinputs \
+                       --lowres \
                        
 
 
