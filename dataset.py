@@ -327,7 +327,7 @@ class DataCompositeGAN(Dataset):
         self.colorjitter = colorjitter
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=[0.65, 1.35], contrast=0.15, saturation=0, hue=0
+                brightness=[0.65, 1.35], contrast=0, saturation=0, hue=0
             ) ## 0.3 0.7
         self.augment = augment
         self.returnraw = return_raw
@@ -662,7 +662,7 @@ class DataCompositeGAN_iharmony(Dataset):
         self.lowres = lowres
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=0.3, contrast=0.1, saturation=0.0, hue=0.0
+                brightness=0.3, contrast=0, saturation=0.0, hue=0.0
             )
         self.augment = augment
         self.return_raw = return_raw

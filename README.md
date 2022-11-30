@@ -54,6 +54,15 @@ s3://kewang-adobe74k/File_testing_all.zip
 
 Downloading the dataset (LR_data.zip) can take around an hour depends on the network speed.
 
+## Training
+
+See the script `train_example.sh` for training examples.
+
+Training notes:
+- modify `--dir_data` to the path of your unzipped `LR_data/train/`.
+- modify `--dir_log` to the directory you want to save the checkpoints.
+- argument `--masking` corresponds to shading map module.
+
 
 
 
