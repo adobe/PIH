@@ -63,8 +63,11 @@ Training notes:
 - modify `--dir_log` to the directory you want to save the checkpoints.
 - argument `--masking` corresponds to shading map module.
 
+Simply run:
 
-
-
+```
+bash train_example.sh
+```
+to start the training.
 
 
