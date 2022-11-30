@@ -6,7 +6,7 @@ Source code (Training and testing) for project: Parametric image harmonization (
 
 The code was developed by [Ke Wang](people.eecs.berkeley.edu/~kewang). Ke was a research scientist intern working with [Michaël Gharbi](http://mgharbi.com/), [He Zhang](https://sites.google.com/site/hezhangsprinter/), [Zhihao Xia](https://likesum.github.io/), and [Eli Shechtman](https://research.adobe.com/person/eli-shechtman/) at Adobe research during the summer of 2022.
 
-Please contact Ke (kewang@adobe.com/kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) for the manuscript submitted to CVPR 2023. Also, feel free to contact us if you have any question. We also provide an interactive demo repo, internally hosted at [here](https://git.azr.adobeitc.com/adobe-research/parametric_image_harmonization_demo).
+Please contact Ke (kewang@adobe.com or kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) for the manuscript submitted to CVPR 2023. Also, feel free to contact us if you have any question. We also provide an interactive demo repo, internally hosted at [here](https://git.azr.adobeitc.com/adobe-research/parametric_image_harmonization_demo).
 
 
 ## Prerequisites
@@ -37,6 +37,17 @@ We create a `installation.sh` to install the dependencies, you need to have [Con
 bash installation.sh
 ```
 (essentially install [PyTorch](https://pytorch.org/))
+
+## Dataset
+
+We use a subset of internal dataset (The Cooper Dataset) to train the model, we host the processed training dataset (with post-inpainting background) on AWS s3 (internal)
+
+```
+s3://kewang-adobe74k/LR_data.zip ------- Download it by command: aws s3 cp s3://kewang-adobe74k/LR_data.zip <local dir>
+```
+
+
+
 
 
 
