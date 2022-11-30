@@ -24,10 +24,10 @@ Please contact Ke (kewang@adobe.com/kewang@berkeley.edu) or Michaël (mgharbi@ad
 git clone https://git.azr.adobeitc.com/mgharbi/PIH
 ```
 
-- Download the pretrained model from [here](https://adobe-my.sharepoint.com/:u:/p/kewang/EWx38imIw2NCqYHsWqlRjoYBjyQueSfCpnWsMphBqUuqng?e=vAgnb0) and put it in 
+- Download the pretrained model from [here](https://adobe-my.sharepoint.com/:u:/p/kewang/EWx38imIw2NCqYHsWqlRjoYBjyQueSfCpnWsMphBqUuqng?e=vAgnb0) and put it in the folder
 
 ```
-parametric_image_harmonization_demo/PIH_ResNet/model
+PIH/pretrained/
 ```
 - Install dependencies
 
@@ -36,15 +36,7 @@ We create a `installation.sh` to install the dependencies, you need to have [Con
 ```
 bash installation.sh
 ```
+(essentially install [PyTorch](https://pytorch.org/))
 
-## Interative demo
 
-Direct into the folder `cd PIH_demo` and run the following command.
 
-```
-python demo_masking_new.py
-```
-
-Once the GUI is promoted, select the background, foreground and the pre-trained model. Hit the `Harmonize the image` button to obtain the results.
-
-You can use arrow keys to move the foreground objects.
