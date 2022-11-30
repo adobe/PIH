@@ -4,15 +4,24 @@ Source code (Training and testing) for project: Parametric image harmonization (
 <img src='github_images/Figure_teaser.png'>
 
 
-The demo was developed by [Ke Wang](people.eecs.berkeley.edu/~kewang) based on [PyGame](https://www.pygame.org/news). Ke was a research scientist intern working with [Michaël Gharbi](http://mgharbi.com/), [He Zhang](https://sites.google.com/site/hezhangsprinter/), [Zhihao Xia](https://likesum.github.io/), and [Eli Shechtman](https://research.adobe.com/person/eli-shechtman/). Our demo was developed for MacBook (local) and can run interavtively on CPUs.
+The code was developed by [Ke Wang](people.eecs.berkeley.edu/~kewang). Ke was a research scientist intern working with [Michaël Gharbi](http://mgharbi.com/), [He Zhang](https://sites.google.com/site/hezhangsprinter/), [Zhihao Xia](https://likesum.github.io/), and [Eli Shechtman](https://research.adobe.com/person/eli-shechtman/) at Adobe research during the summer of 2022.
 
-Please contact Ke (kewang@adobe.com/kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) for the manuscript submitted to CVPR 2023. Also, feel free to contact us if you have any question. Our code repo is internally hosted at [here](https://git.azr.adobeitc.com/mgharbi/PIH).
+Please contact Ke (kewang@adobe.com/kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) for the manuscript submitted to CVPR 2023. Also, feel free to contact us if you have any question. We also provide an interactive demo repo, internally hosted at [here](https://git.azr.adobeitc.com/adobe-research/parametric_image_harmonization_demo).
+
+
+## Prerequisites
+
+- Linux
+- Python 3
+- NVIDIA GPU + CUDA CuDNN
+- [Conda](https://docs.conda.io/en/latest/) installed
+
 
 ## Setup
 
 - Clone this repo:
 ```bash
-git clone https://git.azr.adobeitc.com/adobe-research/parametric_image_harmonization_demo.git
+git clone https://git.azr.adobeitc.com/mgharbi/PIH
 ```
 
 - Download the pretrained model from [here](https://adobe-my.sharepoint.com/:u:/p/kewang/EWx38imIw2NCqYHsWqlRjoYBjyQueSfCpnWsMphBqUuqng?e=vAgnb0) and put it in 
