@@ -40,7 +40,7 @@ bash installation.sh
 
 ## Dataset
 
-We use a subset of internal dataset (The Cooper Dataset) to train the model, we host the processed training dataset (with post-inpainting background) on AWS s3 (internal)
+We use a subset of internal dataset (The Cooper Dataset) to train the model (contact [He Zhang](https://sites.google.com/site/hezhangsprinter/) for more details), we host the processed training dataset (with post-inpainting background) on AWS s3 (internal)
 
 ```
 s3://kewang-adobe74k/LR_data.zip ------- Download it by command: aws s3 cp s3://kewang-adobe74k/LR_data.zip <local dir>
@@ -68,10 +68,33 @@ Training notes:
 - argument `--masking` corresponds to shading map module.
 
 Simply run:
-
 ```
 bash train_example.sh
 ```
 to start the training.
 
+## Testing with trained-model
+
+Once we have a trained model, we can run inference on our testig benchmarks (`File_testing_all.zip`)
+
+`File_testing_all.zip` contains RealHM benchmark, adobe internal benchmark, iharm benchmark
+
+See the script `inference_scripts/Inference_Composite_masking_3.sh` for testing examples.
+
+Testing notes:
+
+- modify `--datadir` to the path of `File_testing_all/` folder 
+
+Run:
+```
+bash inference_scripts/Inference_Composite_masking_3.sh <trained model dir> <target dir> <gpu id> 0.5 <benchmark name>
+```
+
+example:
+
+```
+bash inference_scripts/Inference_Composite_masking_3.sh pretrained/ckpt_g39.pth results/ 0 0.5 realhm
+```
+
+Or try it out our [demo](https://git.azr.adobeitc.com/adobe-research/parametric_image_harmonization_demo)!
 
