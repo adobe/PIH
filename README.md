@@ -58,7 +58,7 @@ Downloading the dataset (LR_data.zip) can take around an hour depends on the net
 
 Our approach uses a two-stream semi-supervised training.
 
-<img src='github_images/Figure_teaser.png'>
+<img src='github_images/Figure_3.png'>
 
 See the script `train_example.sh` for training examples.
 
