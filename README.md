@@ -46,6 +46,14 @@ We use a subset of internal dataset (The Cooper Dataset) to train the model, we 
 s3://kewang-adobe74k/LR_data.zip ------- Download it by command: aws s3 cp s3://kewang-adobe74k/LR_data.zip <local dir>
 ```
 
+We host all of our testing benchmarks/images on AWS s3 (internal)
+
+```
+s3://kewang-adobe74k/File_testing_all.zip
+```
+
+Downloading the dataset (LR_data.zip) can take around an hour depends on the network speed.
+
 
 
 
