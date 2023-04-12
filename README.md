@@ -1,5 +1,5 @@
 # Parametric Image Harmonization (PIH)
-[Project Page](http://people.eecs.berkeley.edu/~kewang/sprih/) | [Paper](https://arxiv.org/abs/2303.00157) 
+[Project Page](http://people.eecs.berkeley.edu/~kewang/sprih/) | [Paper](https://arxiv.org/abs/2303.00157) | [Bibtex](https://people.eecs.berkeley.edu/~kewang/sprih/sprih.txt)
 
 Semi-supervised Parametric Real-world Image Harmonization.\
 _CVPR 2023_ \
