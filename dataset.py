@@ -305,7 +305,7 @@ class IhdDataset(Dataset):
 
 
 class DataCompositeGAN(Dataset):
-    def __init__(self, data_directory, ratio=1, augment=False, colorjitter=True, lowres=False,return_raw=False):
+    def __init__(self, data_directory, ratio=1, augment=False, colorjitter=True, lowres=False,return_raw=False, ratio_constrain=False):
         """
 
         Parameters
@@ -327,10 +327,13 @@ class DataCompositeGAN(Dataset):
         self.colorjitter = colorjitter
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=[0.65, 1.35], contrast=0, saturation=0, hue=0
+                brightness=[0.65, 1.35], contrast=0.2, saturation=0, hue=0
             ) ## 0.3 0.7
         self.augment = augment
         self.returnraw = return_raw
+        self.ratio_constrain = ratio_constrain
+        if ratio_constrain:
+            print("Using Constrained Ratio")
 
     def __len__(self):
         return len(self.image_paths)
@@ -391,7 +394,9 @@ class DataCompositeGAN(Dataset):
                 path_bg_image_augment = path_bg_image.replace("after", "before")
                 
             
-            image_bg_augment = Image.open(path_bg.replace("masks/",'composite/'))
+            # image_bg_augment = Image.open(path_bg.replace("masks/",'composite/'))
+            image_bg_augment = Image.open(path_bg_image_augment)
+            
 
         image_bg_bg = Image.open(path_bg_bg)
         if self.lowres:
@@ -408,6 +413,8 @@ class DataCompositeGAN(Dataset):
 
         mask_bg_bbox = mask_bg.getbbox()
         mask_fg_bbox = mask_fg.getbbox()
+        
+        
 
         ## Target
         x_1_1, y_1_1, x_1_2, y_1_2 = mask_bg_bbox
@@ -420,12 +427,31 @@ class DataCompositeGAN(Dataset):
         ration_y = (y_1_2 - y_1_1) / (y_2_2 - y_2_1) if y_2_2 != y_2_1 else 1
 
         ## Scaling
-        mask_fg_aff = F.affine(
-            mask_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
-        )
-        image_fg_aff = F.affine(
+        
+        if not self.ratio_constrain:
+        
+            mask_fg_aff = F.affine(
+                mask_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
+            )
+            image_fg_aff = F.affine(
+                image_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
+            )
+        else:
+            
+            length_box = max(y_1_2-y_1_1,x_1_2-x_1_1)
+        
+            if length_box < 100:
+                ration_x = (100) / (x_2_2 - x_2_1) if x_2_2 != x_2_1 else 1
+                ration_y = (100) / (y_2_2 - y_2_1) if y_2_2 != y_2_1 else 1
+            
+            mask_fg_aff = F.affine(
+            mask_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0)
+            image_fg_aff = F.affine(
             image_fg, angle=0, translate=[0, 0], scale=min(ration_y, ration_x), shear=0
-        )
+            )
+        
+        
+        
         if mask_fg_aff.getbbox() == None:
             mask_fg_aff = F.affine(mask_fg, angle=0, translate=[0, 0], scale=1, shear=0)
 
@@ -662,7 +688,7 @@ class DataCompositeGAN_iharmony(Dataset):
         self.lowres = lowres
         if self.colorjitter:
             self.transform_color = T.ColorJitter(
-                brightness=0.3, contrast=0, saturation=0.0, hue=0.0
+                brightness=0.3, contrast=0.1, saturation=0.0, hue=0.0
             )
         self.augment = augment
         self.return_raw = return_raw

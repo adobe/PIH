@@ -1,0 +1,22 @@
+name: pytorch_pih
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.8
+  - cudatoolkit=11.3
+  - pytorch=1.11.0
+  - torchvision=0.12.0
+  - cudnn
+  - numpy
+  - pandas
+  - jupyter
+  - pip
+  - tqdm
+  - ipython
+  - pillow
+  - pip:
+     - matplotlib
+     - opencv-python
+     
+

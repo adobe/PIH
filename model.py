@@ -5,19 +5,19 @@ import torchvision.transforms as T
 import torchvision.transforms.functional as F
 import torch.nn.functional as FN
 
-from resnet import resnet18, resnet34, PIHNet, VitNet, EffNetV2, resnet50, resnet101
-from resnet_ibn import resnet50_ibn_b
-from unet.unet_model import UNet
-from unet_dis import UNet_mask
+from utils.resnet import resnet18, resnet34, PIHNet, EffNetV2, resnet50, resnet101, MobileNetV3
+from utils.resnet_ibn import resnet50_ibn_b
+from utils.unet.unet_model import UNet
+from utils.unet_dis import UNet_mask, UNet_mask_light
 
 ########### ------------------ import Midas
 
 
 from torchvision.transforms import Compose
-from midas.dpt_depth import DPTDepthModel
-from midas.midas_net import MidasNet
-from midas.midas_net_custom import MidasNet_small
-from midas.transforms import Resize, NormalizeImage, PrepareForNet
+# from midas.dpt_depth import DPTDepthModel
+# from midas.midas_net import MidasNet
+# from midas.midas_net_custom import MidasNet_small
+# from midas.transforms import Resize, NormalizeImage, PrepareForNet
 
 
 class LUT3D(torch.nn.Module):
@@ -372,6 +372,7 @@ class Model_Composite_PL(torch.nn.Module):
         lowres=False,
         high_res = False,
         lrdata=False,
+        light=False,
     ):
         super().__init__()
         self.dim = dim
@@ -401,8 +402,8 @@ class Model_Composite_PL(torch.nn.Module):
             self.colornet = VitNet
             print("Using ViT!")
         elif self.Eff_bool:
-            self.colornet = EffNetV2
-            print("Using EffNet!")
+            self.colornet = MobileNetV3
+            print("Using MobileNetV3!")
 
         elif self.ibn:
             print("Using ResNet 50 with ibn")
@@ -491,19 +492,34 @@ class Model_Composite_PL(torch.nn.Module):
                     lowres=self.lowres,
                 )
             else:
-                self.gainnet = UNet_mask(
-                    input_dim=input_unet_d,
-                    Low_dim=True,
-                    brush=brush,
-                    nosig=nosig,
-                    onlyupsample=onlyupsample,
-                    maskoffset=maskoffset,
-                    maskconvkernel=maskconvkernel,
-                    swap=swap,
-                    aggupsample=aggupsample,
-                    outputdim=gainout,
-                    lowres=self.lowres,
-                )
+                if light:
+                    self.gainnet = UNet_mask_light(
+                        input_dim=input_unet_d,
+                        Low_dim=True,
+                        brush=brush,
+                        nosig=nosig,
+                        onlyupsample=onlyupsample,
+                        maskoffset=maskoffset,
+                        maskconvkernel=maskconvkernel,
+                        swap=swap,
+                        aggupsample=aggupsample,
+                        outputdim=gainout,
+                        lowres=self.lowres,
+                    )
+                else:
+                     self.gainnet = UNet_mask(
+                        input_dim=input_unet_d,
+                        Low_dim=True,
+                        brush=brush,
+                        nosig=nosig,
+                        onlyupsample=onlyupsample,
+                        maskoffset=maskoffset,
+                        maskconvkernel=maskconvkernel,
+                        swap=swap,
+                        aggupsample=aggupsample,
+                        outputdim=gainout,
+                        lowres=self.lowres,
+                     )                   
         if self.depthmap:
             self.depthnet = MidasNet(
                 "weights_midas/midas_v21-f6b98070.pt", non_negative=True
@@ -638,7 +654,9 @@ class Model_Composite_PL(torch.nn.Module):
                     ),
                     1,
                 )
-
+                
+            self.pl_table = pl_table.clone()
+            
             pl_composite = (
                 self.PL3D(pl_table, input_image) * input_mask
                 + (1 - input_mask) * background
@@ -688,6 +706,8 @@ class Model_Composite_PL(torch.nn.Module):
                 else:
 
                     self.output_final = self.output_final_org[:, 0, ...][:, None, ...]
+                    self.gainmap = self.output_final.clone()
+                    
                     self.output_bg_shadow = self.output_final_org[:, 1, ...][
                         :, None, ...
                     ]
@@ -699,6 +719,8 @@ class Model_Composite_PL(torch.nn.Module):
 
             else:
                 self.output_final = self.output_final_org
+                self.gainmap = self.output_final.clone()
+                
 
                 output_results = (
                     pl_composite * self.output_final * input_mask
@@ -709,6 +731,8 @@ class Model_Composite_PL(torch.nn.Module):
                     if self.lrdata:
                         pl_composite = pl_composite_large.clone()
                         self.output_final = T.Resize((pl_composite_large.shape[-2:]))(self.output_final)
+                        self.gainmap = self.output_final.clone()
+                        
                         output_results = (
                         pl_composite_large * self.output_final * input_mask_high
                         + (1 - input_mask_high) * input_image_high
@@ -716,6 +740,8 @@ class Model_Composite_PL(torch.nn.Module):
                     else:
                         pl_composite = pl_composite_large.clone()
                         self.output_final = T.Resize((pl_composite_large.shape[-2:]))(self.output_final)
+                        self.gainmap = self.output_final.clone()
+                        
                         output_results = (
                         pl_composite_large * self.output_final * input_mask_high
                         + (1 - input_mask_high) * background_high
@@ -1052,6 +1078,8 @@ class Model_Composite_PL_NoBG(torch.nn.Module):
             if self.high_res:
                 pl_composite = pl_composite_large.clone()
                 self.output_final = T.Resize((pl_composite_large.shape[-2:]))(self.output_final)
+                self.gainmap = self.output_final.clone()
+                
                 output_results = (
                     pl_composite_large * self.output_final * input_mask_high
                     + (1 - input_mask_high) * input_image_high
