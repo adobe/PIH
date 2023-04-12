@@ -94,7 +94,7 @@ pip install pygame_gui
 pip install timm
 ```
 
-<img src='github_images/demo_video.gif'>
+<img src='github_images/demo.gif'>
 
 ---
 
