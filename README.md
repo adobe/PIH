@@ -84,6 +84,17 @@ We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* 
 
 ## Demo
 
+We provide an interavtive demo host offline built with [PyGame](https://www.pygame.org/news)
+
+First we install the dependencies:
+
+```
+python -m pip install -U pygame --user
+pip install pygame_gui
+pip install timm
+```
+
+<img src='github_images/demo_video.gif'>
 
 ---
 

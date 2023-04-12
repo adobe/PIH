@@ -546,7 +546,45 @@ class Model_Composite_PL(torch.nn.Module):
         """
 
         self.scalor = scalor
+    
+    def forward_input(self,background, input_image, input_mask,curves,scale_sm=0.6):
+        p_red = torch.from_numpy(curves[0]).float()
+        p_green = torch.from_numpy(curves[1]).float()
+        p_blue = torch.from_numpy(curves[2]).float()
+        
+        pl_table = torch.cat((p_red[None,None,:],p_green[None,None,:],p_blue[None,None,:]),1)
+        pl_table = torch.cat(
+                    (
+                        pl_table[:, 0, None, None, :][:, None, ...].expand(
+                            1, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 1, None, :, None][:, None, ...].expand(
+                            1, 1, self.dim, self.dim, self.dim
+                        ),
+                        pl_table[:, 2, :, None, None][:, None, ...].expand(
+                            1, 1, self.dim, self.dim, self.dim
+                        ),
+                    ),
+                    1,
+                )
 
+        
+        pl_composite = (
+                self.PL3D(pl_table, input_image) * input_mask
+                + (1 - input_mask) * background
+            )
+        
+        output_results = (
+                    pl_composite * ((self.output_final-0.6)*((1-scale_sm)/0.4)+(scale_sm)) * input_mask
+                    + (1 - input_mask) * background
+                )
+
+        return (
+            pl_composite,
+            output_results,
+            pl_table
+        )     
+        
     def forward(self, background, input_image, input_mask):
         """
         Args:
