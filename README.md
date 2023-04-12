@@ -15,7 +15,7 @@ The code was developed by [Ke Wang](people.eecs.berkeley.edu/~kewang) when Ke wa
 Please contact Ke (kewang@adobe.com or kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) if you have any question.
 
 **Results**
-<img src='github_images/Figure_5.png'>
+<img src='github_images/Figure5.png'>
 
 Our results show better visual agreements with the ground truth compared to SOTA methods in terms of color harmonization
 (rows 1,2 and 4) and shading correction (row 3).
