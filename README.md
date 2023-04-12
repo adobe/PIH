@@ -86,13 +86,22 @@ We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* 
 
 We provide an interavtive demo host offline built with [PyGame](https://www.pygame.org/news)
 
-First we install the dependencies:
+First, we install the dependencies:
 
 ```
 python -m pip install -U pygame --user
 pip install pygame_gui
 pip install timm
 ```
+
+Then, simpy run the following command to start the demo:
+```
+python demo.py
+```
+
+replace `demo.py` with `demo_light.py` to run on the light models.
+
+Here we provide a tutorial video for the demo.
 
 <img src='github_images/demo.gif'>
 
