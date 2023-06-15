@@ -12,7 +12,7 @@ _CVPR 2023_ \
 
 The code was developed by [Ke Wang](people.eecs.berkeley.edu/~kewang) when Ke was a research scientist intern at Adobe research.
 
-Please contact Ke (kewang@adobe.com or kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) if you have any question.
+Please contact Ke (kewang@berkeley.edu) or Michaël (mgharbi@adobe.com) if you have any question.
 
 **Results**
 <img src='github_images/Figure5.png'>
@@ -40,7 +40,7 @@ RGB curves harmonize the global color/tone (center), while our shading map corre
 **Table of Contents:**<br>
 1. [Setup](#setup) - set up the enviroment<br>
 2. [Pretrained Models](#setup) - download pretrained models and resources<br>
-3. [Interavtive Demo](#demo) - off-line interactive demo<br>
+3. [Interactive Demo](#demo) - off-line interactive demo<br>
 4. [Inference](#inference) - inference on high-resolution images with pretrained model<br>
 5. [Dataset](#dataset) - prepare your own dataset for the training<br>
 6. [Training](#training) - pipeline for training PIH<br>
@@ -71,20 +71,17 @@ conda env create -f environment.yml
 
 ## Pretrained models
 
-We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* from this [link](https://adobe-my.sharepoint.com/:u:/p/kewang/EWx38imIw2NCqYHsWqlRjoYBjyQueSfCpnWsMphBqUuqng?e=vAgnb0) and put it in the folder.
+We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* from this [link](https://mgharbi-public.s3.us-west-2.amazonaws.com/pih/ckpt_g39.pth) and put it in the folder.
 
 ```
 ./pretrained/
 ```
 
-**Besides the model reported in the paper, we also provide a light-weight model (6M parameters), available at [link](https://adobe-my.sharepoint.com/personal/kewang_adobe_com/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fkewang%5Fadobe%5Fcom%2FDocuments%2FPIH%5Fcheckpoints&ga=1)**
-
-
 ---
 
 ## Demo
 
-We provide an interavtive demo host offline built with [PyGame](https://www.pygame.org/news)
+We provide an interactive demo host offline built with [PyGame](https://www.pygame.org/news)
 
 First, we install the dependencies:
 
@@ -99,8 +96,6 @@ Then, simpy run the following command to start the demo:
 python demo.py
 ```
 
-replace `demo.py` with `demo_light.py` to run on the light models.
-
 Here we provide a tutorial video for the demo.
 
 <img src='github_images/demo.gif'>
@@ -112,25 +107,20 @@ Here we provide a tutorial video for the demo.
 We provide the inference code for evaluations:
 
 ```
-python inference.py --bg <background dir *.png> --fg <foreground dir *.png> --checkpoints <checkpoint dir> [--gpu] [--light]
+python inference.py --bg <background dir *.png> --fg <foreground dir *.png> --checkpoints <checkpoint dir> [--gpu]
 ```
 
 notes:
 - arguments `--gpu` enable inference on GPU using cuda, default is by using CPU.
 - arguments `--checkpoints` specifies the dir for the checkpoint.
-- arguments `--light`, if specified, will do the inference using light model.
 
 
 Example:
-
-large model:
 ```
 python inference.py --bg Demo_hr/Real_09_bg.jpg --fg Demo_hr/Real_09_fg.png --checkpoints pretrained/ckpt_g39.pth --gpu
 ```
-light model:
-```
-python inference.py --bg Demo_hr/Real_09_bg.jpg --fg Demo_hr/Real_09_fg.png --checkpoints pretrained/ckpt_light_2.pth --gpu --light
-```
+
+Check the `results/` folder for output images.
 
 ---
 
@@ -181,15 +171,15 @@ Our approach uses a dual-stream semi-supervised training to bridge the domain ga
 
 <img src='github_images/Figure_3.png'>
 
-We provide the script `train_example.sh` to perform training, and script `train_example_lightmodel.sh` for training light models.
+We provide the script `train_example.sh` to perform training.
 
 Training notes:
-- modify `--dir_data` to the path of your custum dataset.
+- modify `--dir_data` to the path of your custom dataset.
 - arguments `recon_weight` correspons to the weighting parameter to balance stream 1 and stream 2.
 
 Simply run:
 ```
-bash scrits/train_example.sh
+bash scripts/train_example.sh
 ```
 to start the training.
 

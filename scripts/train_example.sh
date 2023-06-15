@@ -25,7 +25,8 @@ name=iharmony_${inputdimD}_ratio_${training_ratio}_${recon_ratio}_reconweight_${
 model_name=exp_${date}_batch_size_$((batch_size))_lr_${lr}_${name}_device_${device}
 
 # Set folder names
-dir_data=/mnt/localssd/LR_data/train/
+dir_data=demo_data/train/
+# dir_data=/mnt/localssd/LR_data/train/
 
 
 CUDA_VISIBLE_DEVICES=$device python PIH_train.py --datadir $dir_data \
