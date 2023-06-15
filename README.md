@@ -55,7 +55,7 @@ RGB curves harmonize the global color/tone (center), while our shading map corre
 - Clone this repo:
 
 ```bash
-git clone https://git.azr.adobeitc.com/mgharbi/PIH
+git clone git@github.com:adobe/PIH.git
 ```
 
 - Install dependencies
