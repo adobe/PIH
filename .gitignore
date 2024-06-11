@@ -3,3 +3,4 @@ PIH_ResNet/results/
 .DS_Store
 __pycache__
 .python-version
+*.pth
