@@ -4,3 +4,4 @@ PIH_ResNet/results/
 __pycache__
 .python-version
 *.pth
+results/
