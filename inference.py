@@ -151,7 +151,6 @@ class Inferencer:
         if fg_mask_paths is None:
             fg_mask_paths = [None] * len(fg_paths)
 
-        bg_imgs = [Image.open(bg_path).convert("RGB") for bg_path in bg_paths]
         for fg_path, fg_mask_path in zip(fg_paths, fg_mask_paths):
             fg_path = Path(fg_path)
             fg_img = Image.open(fg_path)
@@ -162,8 +161,10 @@ class Inferencer:
                 fg_mask = Image.open(fg_mask_path).convert("1")
             fg_img = fg_img.convert("RGB")
 
-            for bg_path, bg_img in zip(bg_paths, bg_imgs):
+            for bg_path in bg_paths:
                 bg_path = Path(bg_path)
+                bg_img = Image.open(bg_path).convert("RGB")
+
                 resized_fg_img = resize_and_pad(fg_img, bg_img.size)
                 resized_fg_mask = resize_and_pad(fg_mask, bg_img.size)
                 composite_img = Image.composite(resized_fg_img, bg_img, resized_fg_mask)
