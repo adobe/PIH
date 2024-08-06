@@ -8,25 +8,20 @@
 # OF ANY KIND, either express or implied. See the License for the specific language
 # governing permissions and limitations under the License.
 
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 import pygame
 import pygame_gui
-from pygame_gui.windows.ui_file_dialog import UIFileDialog
-from pygame_gui.elements.ui_button import UIButton
-from pygame.rect import Rect
-import matplotlib.pyplot as plt
-
 import torch
-import numpy as np
-import matplotlib.pyplot
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
-import glob
-import os
-import PIL
 from PIL import Image
-import cv2
+from pygame.rect import Rect
+from pygame_gui.elements.ui_button import UIButton
+from pygame_gui.windows.ui_file_dialog import UIFileDialog
 
-from model import Model_Composite_PL, Model_Composite
+from model import Model_Composite_PL
 
 transforms_mask = T.Compose([T.Grayscale(), T.ToTensor()])
 transform = T.Compose([T.ToTensor()])
@@ -1068,7 +1063,7 @@ while 1:
                     torch_bg = transform(image_bg).to(device)
                     torch_composite = transform(image_composite).to(device)
                     torch_mask = transforms_mask(image_mask).to(device)
-                    print(b)
+
                     torch_composite = F.affine(
                         torch_composite, angle=0, translate=[0, 0], scale=scale, shear=0
                     )
