@@ -13,6 +13,8 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
@@ -66,6 +68,11 @@ def get_args():
         "--deterministic",
         action="store_true",
         help="If specified and in GPU inference, can reproduce the results of paper",
+    )
+    parser.add_argument(
+        "--vis-details",
+        action="store_true",
+        help="If specified, export the detailed results, gainmap and results_summary.",
     )
 
     args = vars(parser.parse_args())
@@ -244,6 +251,7 @@ class Inferencer:
         curves: torch.Tensor,
         out_dir: Union[str, Path] = "results",
         fg_input_dir: Optional[Union[str, Path]] = None,
+        vis_details: bool = False,
     ):
         out_dir = Path(out_dir)
         if fg_input_dir is not None:
@@ -253,34 +261,34 @@ class Inferencer:
         name_cat = fg_path.stem
 
         output_lr = F.to_pil_image(results[0])
-        output_lr.save(out_dir / f"{name_cat}_final.png")
+        output_lr.save(out_dir / f"{name_cat}.png")
 
-        output_gm = F.to_pil_image(gainmap[0])
-        output_gm.save(out_dir / f"{name_cat}_gainmap.png")
+        if vis_details:
+            output_gm = F.to_pil_image(gainmap[0])
+            output_gm.save(out_dir / f"{name_cat}_gainmap.png")
 
-        #### Save Fig
+            #### Save Fig
 
-        # curves = curves.cpu().numpy()
+            curves = curves.cpu().numpy()
 
-        # red_curve = curves[0, 0, 0, 0, :]
-        # green_curve = curves[0, 1, 0, :, 0]
-        # blue_curve = curves[0, 2, :, 0, 0]
+            red_curve = curves[0, 0, 0, 0, :]
+            green_curve = curves[0, 1, 0, :, 0]
+            blue_curve = curves[0, 2, :, 0, 0]
 
-        # plt.figure()
-        # plt.plot(np.linspace(0, 1, 32), red_curve, "r")
-        # plt.plot(np.linspace(0, 1, 32), green_curve, "g")
-        # plt.plot(np.linspace(0, 1, 32), blue_curve, "b")
-        # plt.ylim(0, 1)
-        # plt.legend(["Reg", "Green", "Blue"])
-        # plt.title("Learned Color Curves")
+            plt.figure()
+            plt.plot(np.linspace(0, 1, 32), red_curve, "r")
+            plt.plot(np.linspace(0, 1, 32), green_curve, "g")
+            plt.plot(np.linspace(0, 1, 32), blue_curve, "b")
+            plt.ylim(0, 1)
+            plt.legend(["Reg", "Green", "Blue"])
+            plt.title("Learned Color Curves")
 
-        # plt.savefig(out_dir / f"{name_cat}_color.jpg")
+            plt.savefig(out_dir / f"{name_cat}_color.jpg")
 
-        # plt.close()
+            plt.close()
 
-        im_final = get_concat_h(composite, get_concat_h(mask, output_lr))
-
-        im_final.save(out_dir / f"{name_cat}_results_summary.png")
+            im_final = get_concat_h(composite, get_concat_h(mask, output_lr))
+            im_final.save(out_dir / f"{name_cat}_results_summary.png")
 
     def __call__(
         self,
@@ -289,6 +297,7 @@ class Inferencer:
         fg_mask_paths: Optional[List[Union[str, Path]]] = None,
         out_dir: Union[str, Path] = "results",
         fg_input_dir: Optional[Union[str, Path]] = None,
+        vis_details: bool = False,
     ):
         assert len(bg_paths) == len(
             fg_paths
@@ -301,7 +310,12 @@ class Inferencer:
         for data in tqdm(inputs, desc="Processing...", total=len(fg_paths)):
             data = self.to(data, self.device)
             ouputs = data[:4] + list(self.forward(*data[4:]))
-            self.visualize(*ouputs, out_dir=out_dir, fg_input_dir=fg_input_dir)
+            self.visualize(
+                *ouputs,
+                out_dir=out_dir,
+                fg_input_dir=fg_input_dir,
+                vis_details=vis_details,
+            )
 
 
 def collect_images(path: Union[str, Path]) -> List[Path]:
@@ -333,6 +347,7 @@ def collect_images_from_images(
         for ext, mime_type in mimetypes.types_map.items()
         if mime_type.startswith("image")
     ]
+    exts += [ext.upper() for ext in exts]
     for image in images:
         image = Path(image)
         rel_path = image.relative_to(root_path)
@@ -368,6 +383,7 @@ if __name__ == "__main__":
     bg_paths = collect_images_from_images(fg_paths, fg_root_path, args.pop("bg"))
 
     out_dir = args.pop("out_dir")
+    vis_details = args.pop("vis_details")
 
     evaluater = Inferencer(**args)
     evaluater(
@@ -376,4 +392,5 @@ if __name__ == "__main__":
         fg_mask_paths=fg_mask_paths,
         out_dir=out_dir,
         fg_input_dir=fg_root_path,
+        vis_details=vis_details,
     )
