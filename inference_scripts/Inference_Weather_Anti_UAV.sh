@@ -19,4 +19,4 @@ fi
 echo "Root folder: $root"
 echo "Device: $device"
 
-python inference.py "$root/backgrounds" "$root/foregrounds" --out-dir "$root/harmonized" --device "$device" --deterministic
+python inference.py "$root/backgrounds" "$root/foregrounds" --out-dir "$root/harmonized" --device "$device"
