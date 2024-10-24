@@ -210,6 +210,7 @@ class Inferencer:
             for data in inputs
         ]
 
+    @torch.inference_mode()
     def forward(
         self,
         torch_bg: torch.Tensor,
@@ -219,12 +220,12 @@ class Inferencer:
         torch_composite_low: torch.Tensor,
         torch_mask_low: torch.Tensor,
     ):
-        with torch.no_grad():
-            inter_composite, output_composite, par1, par2 = self.model(
-                torch_bg_low.unsqueeze(0),
-                torch_composite_low.unsqueeze(0),
-                torch_mask_low.unsqueeze(0),
-            )
+        # with torch.no_grad():
+        inter_composite, output_composite, par1, par2 = self.model(
+            torch_bg_low.unsqueeze(0),
+            torch_composite_low.unsqueeze(0),
+            torch_mask_low.unsqueeze(0),
+        )
 
         hr_intermediate = (
             self.model.PL3D(self.model.pl_table, torch_composite.unsqueeze(0))
