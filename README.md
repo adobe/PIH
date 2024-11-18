@@ -71,7 +71,7 @@ conda env create -f environment.yml
 
 ## Pretrained models
 
-We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* from this [link](https://mgharbi-public.s3.us-west-2.amazonaws.com/pih/ckpt_g39.pth) and put it in the folder.
+We provide our pre-trained model (93M parameters) on *Artist Retouched Dataset* from this [link](https://drive.google.com/file/d/1seW8qSnaBOQ4_S9bQ4ThVOdeJGYJ-f74/view?usp=sharing) and put it in the folder.
 
 ```
 ./pretrained/
