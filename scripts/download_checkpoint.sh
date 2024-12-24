@@ -2,5 +2,5 @@
 set -e
 
 cd pretrained
-wget https://mgharbi-public.s3.us-west-2.amazonaws.com/pih/ckpt_g39.pth
+gdown 1seW8qSnaBOQ4_S9bQ4ThVOdeJGYJ-f74
 cd ..
